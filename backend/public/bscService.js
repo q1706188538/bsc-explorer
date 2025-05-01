@@ -745,8 +745,8 @@ class BscService {
                 retryCount++;
 
                 if (retryCount <= maxRetries) {
-                    console.log(`将在2秒后重试...`);
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    console.log(`准备重试...`);
+                    // 不再添加延迟，由用户控制并发
                 } else {
                     console.error('达到最大重试次数，操作失败');
                     alert('获取交易记录失败: ' + error.message);
@@ -1364,8 +1364,8 @@ class BscService {
                 retryCount++;
 
                 if (retryCount <= maxRetries) {
-                    console.log(`将在2秒后重试...`);
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    console.log(`准备重试...`);
+                    // 不再添加延迟，由用户控制并发
                 } else {
                     console.error('达到最大重试次数，操作失败');
                     throw error;
@@ -1995,9 +1995,7 @@ class BscService {
                                 const apiKey = this.getNextApiKey();
                                 console.log(`查询合约 ${addr} 的创建者信息（优先级: ${contract.priority}，使用API Key: ${apiKey.substring(0, 5)}...）...${retryCount > 0 ? ` 重试 #${retryCount}` : ''}`);
 
-                                // 添加随机延迟，避免API限制
-                                const delay = Math.floor(Math.random() * 1000) + 500; // 500-1500ms
-                                await new Promise(resolve => setTimeout(resolve, delay));
+                                // 不再添加随机延迟，由用户控制并发
 
                                 // 尝试使用后端API获取合约信息
                                 try {
@@ -2150,9 +2148,7 @@ class BscService {
                                 console.log(`查询失败，准备重试 (${retryCount + 1}/${maxRetries})...`);
                                 retryCount++;
 
-                                // 增加重试延迟，避免API限制
-                                const retryDelay = Math.floor(Math.random() * 2000) + 1000; // 1000-3000ms
-                                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                                // 不再增加重试延迟，由用户控制并发
                             }
                         }
 
