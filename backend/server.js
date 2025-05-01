@@ -12,7 +12,7 @@ const apiRoutes = require('./routes/api');
 const app = express();
 const port = config.port;
 
-// 安全中间件 - 允许内联脚本执行
+// 安全中间件 - 允许内联脚本执行，禁用 HSTS
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -27,6 +27,10 @@ app.use(helmet({
       frameSrc: ["'self'", "http:"],
     },
   },
+  // 禁用 HSTS
+  hsts: false,
+  // 添加 referrerPolicy 设置
+  referrerPolicy: { policy: 'no-referrer' },
 }));
 
 // CORS 配置
