@@ -1,0 +1,603 @@
+// 前端 API 服务
+class ApiService {
+    constructor() {
+        this.API_BASE_URL = 'http://localhost:3000/api';
+        this.transactionsCache = {};
+        this.tokenContracts = {};
+        this.createdContracts = {};
+        this.contractCreatorsQueryProgress = {
+            isQuerying: false,
+            total: 0,
+            completed: 0,
+            withCreator: 0
+        };
+    }
+
+    // 通用 API 调用函数
+    async callApi(endpoint, method = 'GET', data = null) {
+        try {
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include' // 包含 cookies
+            };
+
+            if (data && (method === 'POST' || method === 'PUT')) {
+                options.body = JSON.stringify(data);
+            }
+
+            console.log(`调用 API: ${this.API_BASE_URL}${endpoint}`, method, data);
+
+            const response = await fetch(`${this.API_BASE_URL}${endpoint}`, options);
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || '请求失败');
+            }
+
+            return result;
+        } catch (error) {
+            console.error('API 调用失败:', error);
+            throw error;
+        }
+    }
+
+    // 验证代币销毁
+    async checkTokenBurn(txHash) {
+        try {
+            const response = await this.callApi('/verify-burn', 'POST', { txHash });
+            return response.result;
+        } catch (error) {
+            console.error('验证代币销毁失败:', error);
+            throw error;
+        }
+    }
+
+    // 获取验证状态
+    async getVerificationStatus() {
+        try {
+            const response = await this.callApi('/verification-status');
+            return {
+                verified: response.verified,
+                txHash: response.txHash,
+                from: response.from
+            };
+        } catch (error) {
+            console.error('获取验证状态失败:', error);
+            return { verified: false };
+        }
+    }
+
+    // 获取交易记录
+    async getTransactions(address, page = 1, pageSize = 5000) { // 增加到5000条，接近BSCScan API的最大限制
+        try {
+            // 检查缓存
+            const cacheKey = `${address}_${page}_${pageSize}`;
+            if (this.transactionsCache[cacheKey]) {
+                console.log(`从缓存获取交易记录: ${cacheKey}`);
+                return this.transactionsCache[cacheKey];
+            }
+
+            const response = await this.callApi('/transactions', 'POST', {
+                address,
+                page,
+                offset: pageSize
+            });
+
+            // 处理交易记录
+            const transactions = response.result.map(tx => {
+                // 添加方向（转入/转出）
+                tx.direction = tx.from.toLowerCase() === address.toLowerCase() ? 'out' : 'in';
+
+                // 格式化值
+                if (tx.value && !isNaN(tx.value)) {
+                    const bnbValue = parseFloat(tx.value) / 1e18;
+                    tx.value = `${bnbValue.toFixed(6)} BNB`;
+                }
+
+                return tx;
+            });
+
+            // 创建分页信息
+            const result = {
+                transactions,
+                pagination: {
+                    currentPage: page,
+                    pageSize,
+                    totalRecords: transactions.length,
+                    hasPreviousPage: page > 1,
+                    hasNextPage: transactions.length === pageSize // 如果返回的记录数等于页大小，假设有下一页
+                }
+            };
+
+            // 缓存结果
+            this.transactionsCache[cacheKey] = result;
+
+            return result;
+        } catch (error) {
+            console.error('获取交易记录失败:', error);
+            throw error;
+        }
+    }
+
+    // 获取缓存的交易记录
+    getCachedTransactions(address, page, pageSize) {
+        const cacheKey = `${address}_${page}_${pageSize}`;
+        return this.transactionsCache[cacheKey];
+    }
+
+    // 清除交易记录缓存
+    clearTransactionsCache(address = null, clearTokenContracts = false) {
+        if (address) {
+            // 清除特定地址的缓存
+            Object.keys(this.transactionsCache).forEach(key => {
+                if (key.startsWith(`${address}_`)) {
+                    delete this.transactionsCache[key];
+                }
+            });
+        } else {
+            // 清除所有缓存
+            this.transactionsCache = {};
+        }
+
+        // 如果需要，清除代币合约缓存
+        if (clearTokenContracts) {
+            this.tokenContracts = {};
+            this.createdContracts = {};
+        }
+
+        console.log('缓存已清除', address, clearTokenContracts);
+    }
+
+    // 设置当前查询地址
+    setCurrentQueryAddress(address) {
+        this.currentQueryAddress = address;
+    }
+
+    // 获取合约信息
+    async getContractInfo(contractAddress, currentQueryAddress = null) {
+        try {
+            console.log(`获取合约信息: ${contractAddress}`);
+            const response = await this.callApi('/contract-info', 'POST', { contractAddress });
+
+            // 打印响应，帮助调试
+            console.log('合约信息响应:', JSON.stringify(response, null, 2));
+
+            // 处理合约信息
+            const contractInfo = response.result;
+
+            // 检查响应是否包含必要的字段
+            if (!contractInfo) {
+                console.error('合约信息响应中没有 result 字段');
+                return {
+                    address: contractAddress,
+                    balance: 'Unknown',
+                    bytecodeSize: 'Unknown',
+                    creator: 'Unknown',
+                    creationTx: 'Unknown',
+                    hasVerifiedSource: false,
+                    isToken: false,
+                    tokenInfo: null,
+                    error: '无法获取合约信息'
+                };
+            }
+
+            // 解析 ABI
+            let abiMessage = '';
+
+            if (contractInfo.abi) {
+                try {
+                    // 如果 ABI 是字符串，尝试解析为 JSON
+                    if (typeof contractInfo.abi === 'string') {
+                        if (contractInfo.abi === 'Contract source code not verified') {
+                            abiMessage = '合约源代码未验证';
+                        } else {
+                            try {
+                                JSON.parse(contractInfo.abi);
+                            } catch (e) {
+                                console.error('解析 ABI 失败:', e);
+                                abiMessage = '无法解析 ABI';
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('处理 ABI 失败:', error);
+                    abiMessage = '处理 ABI 时出错';
+                }
+            } else {
+                abiMessage = '没有 ABI 信息';
+            }
+
+            // 解析源代码
+            let sourceCodeInfo = null;
+
+            if (contractInfo.sourceCode && Array.isArray(contractInfo.sourceCode) && contractInfo.sourceCode.length > 0) {
+                sourceCodeInfo = contractInfo.sourceCode[0];
+            } else if (contractInfo.sourceCode && typeof contractInfo.sourceCode === 'object') {
+                sourceCodeInfo = contractInfo.sourceCode;
+            }
+
+            // 检查是否是代币合约
+            let isToken = false;
+            let tokenName = 'Unknown Token';
+            let tokenSymbol = 'UNKNOWN';
+
+            if (sourceCodeInfo && sourceCodeInfo.ABI) {
+                try {
+                    // 检查 ABI 是否包含代币方法
+                    isToken = sourceCodeInfo.ABI.includes('totalSupply') &&
+                              sourceCodeInfo.ABI.includes('balanceOf') &&
+                              sourceCodeInfo.ABI.includes('transfer');
+
+                    // 获取代币名称和符号
+                    if (isToken) {
+                        // 尝试从合约名称获取代币名称和符号
+                        if (sourceCodeInfo.ContractName) {
+                            tokenName = sourceCodeInfo.ContractName;
+                            // 如果合约名称包含空格，可能是 "Token Name"，取第一个单词作为符号
+                            if (sourceCodeInfo.ContractName.includes(' ')) {
+                                const parts = sourceCodeInfo.ContractName.split(' ');
+                                tokenSymbol = parts[0].toUpperCase();
+                            } else {
+                                tokenSymbol = sourceCodeInfo.ContractName.toUpperCase();
+                            }
+                        }
+
+                        // 如果有更具体的代币信息，使用它们
+                        if (sourceCodeInfo.TokenName) {
+                            tokenName = sourceCodeInfo.TokenName;
+                        }
+
+                        if (sourceCodeInfo.TokenSymbol) {
+                            tokenSymbol = sourceCodeInfo.TokenSymbol.toUpperCase();
+                        }
+                    }
+                } catch (error) {
+                    console.error('检查代币合约失败:', error);
+                }
+            }
+
+            // 如果已经有这个代币合约的信息，并且不是默认值，使用已有的信息
+            if (this.tokenContracts[contractAddress.toLowerCase()]) {
+                const existingContract = this.tokenContracts[contractAddress.toLowerCase()];
+
+                if (existingContract.name && existingContract.name !== 'Unknown Token' && existingContract.name !== 'Unknown Contract') {
+                    tokenName = existingContract.name;
+                }
+
+                if (existingContract.symbol && existingContract.symbol !== 'UNKNOWN') {
+                    tokenSymbol = existingContract.symbol;
+                }
+            }
+
+            // 获取创建者信息
+            let creator = 'Unknown';
+            let creationTx = 'Unknown';
+            let createdByCurrentAddress = false;
+
+            if (contractInfo.creator && Array.isArray(contractInfo.creator) && contractInfo.creator.length > 0) {
+                creator = contractInfo.creator[0].contractCreator || 'Unknown';
+                creationTx = contractInfo.creator[0].txHash || 'Unknown';
+
+                if (currentQueryAddress && creator) {
+                    createdByCurrentAddress = creator.toLowerCase() === currentQueryAddress.toLowerCase();
+                }
+            }
+
+            // 如果是代币合约，添加到代币合约列表
+            if (isToken) {
+                this.tokenContracts[contractAddress.toLowerCase()] = {
+                    address: contractAddress,
+                    name: tokenName,
+                    symbol: tokenSymbol,
+                    creator: creator,
+                    createdByCurrentAddress: createdByCurrentAddress
+                };
+            }
+
+            // 返回处理后的合约信息
+            return {
+                address: contractAddress,
+                balance: 'Unknown', // 后端可能需要添加这个信息
+                bytecodeSize: 'Unknown', // 后端可能需要添加这个信息
+                creator: creator,
+                creationTx: creationTx,
+                hasVerifiedSource: sourceCodeInfo && sourceCodeInfo.ABI && sourceCodeInfo.ABI !== 'Contract source code not verified',
+                isToken: isToken,
+                abiMessage: abiMessage,
+                tokenInfo: isToken ? {
+                    name: tokenName,
+                    symbol: tokenSymbol,
+                    decimals: 18, // 默认值
+                    totalSupply: 'Unknown'
+                } : null
+            };
+        } catch (error) {
+            console.error('获取合约信息失败:', error);
+
+            // 返回错误信息
+            return {
+                address: contractAddress,
+                balance: 'Unknown',
+                bytecodeSize: 'Unknown',
+                creator: 'Error',
+                creationTx: 'Error',
+                hasVerifiedSource: false,
+                isToken: false,
+                tokenInfo: null,
+                error: error.message
+            };
+        }
+    }
+
+    // 获取代币合约列表
+    getTokenContracts() {
+        return this.tokenContracts;
+    }
+
+    // 更新所有代币合约的名称和符号
+    updateAllTokenContractNames() {
+        console.log('开始更新所有代币合约的名称和符号...');
+
+        // 获取所有代币合约
+        const contracts = Object.values(this.tokenContracts || {});
+
+        if (contracts.length === 0) {
+            console.log('没有代币合约需要更新');
+            return;
+        }
+
+        console.log(`共有 ${contracts.length} 个代币合约需要更新`);
+
+        // 遍历所有合约，更新名称和符号
+        for (const contract of contracts) {
+            const contractAddr = contract.address.toLowerCase();
+
+            // 从BSCScan API获取的代币信息
+            if (contract.tokenName && contract.tokenSymbol) {
+                contract.name = contract.tokenName;
+                contract.symbol = contract.tokenSymbol;
+                console.log(`更新合约 ${contractAddr} 的名称和符号: ${contract.name} (${contract.symbol})`);
+                continue;
+            }
+
+            // 如果没有名称和符号，尝试从交易记录中获取
+            // 注意：ApiService 中没有 contractTransactions 属性，所以这部分逻辑在这里不适用
+            // 但我们保留这个逻辑框架，以便将来可能的扩展
+
+            // 如果仍然没有名称和符号，尝试从合约地址生成
+            if (contract.name === 'Unknown Contract' || contract.name === 'Unknown Token' || !contract.name) {
+                // 使用合约地址的前4位和后4位作为名称
+                const shortAddr = `${contractAddr.substring(0, 6)}...${contractAddr.substring(contractAddr.length - 4)}`;
+                contract.name = `Token ${shortAddr}`;
+                console.log(`为合约 ${contractAddr} 生成名称: ${contract.name}`);
+            }
+
+            if (contract.symbol === 'UNKNOWN' || !contract.symbol) {
+                // 使用合约地址的前4位作为符号
+                contract.symbol = contractAddr.substring(2, 6).toUpperCase();
+                console.log(`为合约 ${contractAddr} 生成符号: ${contract.symbol}`);
+            }
+        }
+
+        console.log('所有代币合约的名称和符号更新完成');
+    }
+
+    // 获取由当前地址创建的合约
+    async getCreatedContracts() {
+        // 如果没有当前查询地址，返回空对象
+        if (!this.currentQueryAddress) {
+            console.log('没有当前查询地址，无法获取创建的合约');
+            return {};
+        }
+
+        // 如果已经有缓存的创建合约，直接返回
+        if (Object.keys(this.createdContracts).length > 0) {
+            console.log(`返回缓存的创建合约: ${Object.keys(this.createdContracts).length} 个`);
+            return this.createdContracts;
+        }
+
+        // 重置创建合约缓存
+        this.createdContracts = {};
+
+        // 遍历所有代币合约，检查创建者是否是当前地址
+        const currentAddress = this.currentQueryAddress.toLowerCase();
+
+        console.log(`检查由地址 ${currentAddress} 创建的合约...`);
+        console.log(`当前有 ${Object.keys(this.tokenContracts).length} 个代币合约`);
+
+        // 遍历所有代币合约
+        for (const [contractAddress, contract] of Object.entries(this.tokenContracts)) {
+            // 如果合约有创建者信息，并且创建者是当前地址
+            if (contract.creator && contract.creator.toLowerCase() === currentAddress) {
+                console.log(`找到由当前地址创建的合约: ${contractAddress}`);
+
+                // 标记为由当前地址创建
+                contract.createdByCurrentAddress = true;
+
+                // 添加到创建合约缓存
+                this.createdContracts[contractAddress] = contract;
+            }
+        }
+
+        console.log(`共找到 ${Object.keys(this.createdContracts).length} 个由当前地址创建的合约`);
+
+        return this.createdContracts;
+    }
+
+    // 检查地址是否是代币合约
+    isTokenContract(address) {
+        return address && this.tokenContracts[address.toLowerCase()] !== undefined;
+    }
+
+    // 获取代币合约信息
+    getTokenContractInfo(address) {
+        return address ? this.tokenContracts[address.toLowerCase()] : null;
+    }
+
+    // 获取合约相关的交易
+    getContractTransactions(contractAddress) {
+        // 从缓存中获取所有交易
+        const allTransactions = [];
+
+        // 遍历所有缓存的交易记录
+        Object.values(this.transactionsCache).forEach(cachedResult => {
+            if (cachedResult && cachedResult.transactions) {
+                // 筛选与指定合约相关的交易
+                const relatedTxs = cachedResult.transactions.filter(tx =>
+                    tx.to && tx.to.toLowerCase() === contractAddress.toLowerCase() ||
+                    tx.from && tx.from.toLowerCase() === contractAddress.toLowerCase() ||
+                    tx.contractAddress && tx.contractAddress.toLowerCase() === contractAddress.toLowerCase()
+                );
+
+                // 添加到结果中
+                allTransactions.push(...relatedTxs);
+            }
+        });
+
+        // 按时间戳排序（从新到旧）
+        return allTransactions.sort((a, b) => parseInt(b.timeStamp) - parseInt(a.timeStamp));
+    }
+
+    // 获取合约创建者查询进度
+    getContractCreatorsQueryProgress() {
+        return this.contractCreatorsQueryProgress;
+    }
+
+    // 查询所有合约创建者信息
+    async queryAllContractCreators() {
+        // 获取所有代币合约
+        const contractAddresses = Object.keys(this.tokenContracts);
+
+        // 打印当前的代币合约列表，用于调试
+        console.log('查询合约创建者信息前的代币合约列表:');
+        Object.entries(this.tokenContracts).forEach(([address, contract]) => {
+            console.log(`- ${address}: ${contract.name} (${contract.symbol})`);
+        });
+
+        // 如果没有合约，直接返回
+        if (contractAddresses.length === 0) {
+            console.log('没有代币合约，无需查询创建者信息');
+            return;
+        }
+
+        // 初始化查询进度
+        this.contractCreatorsQueryProgress = {
+            isQuerying: true,
+            total: contractAddresses.length,
+            completed: 0,
+            withCreator: 0
+        };
+
+        console.log(`开始查询 ${contractAddresses.length} 个合约的创建者信息...`);
+
+        // 创建一个队列，用于并发查询
+        const queue = [...contractAddresses];
+        const concurrentLimit = 5; // 最多同时查询5个合约
+        const activePromises = [];
+
+        // 处理单个合约的创建者信息
+        const processContract = async (contractAddress) => {
+            try {
+                // 如果合约已经有创建者信息，跳过查询
+                if (this.tokenContracts[contractAddress].creator) {
+                    console.log(`合约 ${contractAddress} 已有创建者信息，跳过查询`);
+                    this.contractCreatorsQueryProgress.completed++;
+                    this.contractCreatorsQueryProgress.withCreator++;
+                    return;
+                }
+
+                console.log(`查询合约 ${contractAddress} 的创建者信息...`);
+
+                // 查询合约信息
+                const contractInfo = await this.getContractInfo(contractAddress, this.currentQueryAddress);
+
+                // 更新合约信息
+                if (contractInfo && contractInfo.creator && contractInfo.creator !== 'Unknown' && contractInfo.creator !== 'Error') {
+                    console.log(`获取到合约 ${contractAddress} 的创建者信息: ${contractInfo.creator}`);
+
+                    // 更新代币合约信息
+                    this.tokenContracts[contractAddress].creator = contractInfo.creator;
+
+                    // 检查是否由当前地址创建
+                    if (this.currentQueryAddress && contractInfo.creator.toLowerCase() === this.currentQueryAddress.toLowerCase()) {
+                        console.log(`合约 ${contractAddress} 由当前地址创建`);
+                        this.tokenContracts[contractAddress].createdByCurrentAddress = true;
+
+                        // 添加到创建合约缓存
+                        this.createdContracts[contractAddress] = this.tokenContracts[contractAddress];
+                    }
+
+                    // 更新进度
+                    this.contractCreatorsQueryProgress.withCreator++;
+                } else {
+                    console.log(`未获取到合约 ${contractAddress} 的创建者信息`);
+                }
+
+                // 更新进度
+                this.contractCreatorsQueryProgress.completed++;
+
+            } catch (error) {
+                console.error(`查询合约 ${contractAddress} 的创建者信息失败:`, error);
+
+                // 更新进度
+                this.contractCreatorsQueryProgress.completed++;
+            }
+        };
+
+        // 处理队列
+        return new Promise(resolve => {
+            const processQueue = async () => {
+                // 如果队列为空，等待所有活动的Promise完成后返回
+                if (queue.length === 0 && activePromises.length === 0) {
+                    console.log('所有合约创建者信息查询完成');
+                    this.contractCreatorsQueryProgress.isQuerying = false;
+
+                    // 更新所有代币合约的名称和符号
+                    this.updateAllTokenContractNames();
+
+                    resolve();
+                    return;
+                }
+
+                // 如果队列不为空，并且活动的Promise数量小于并发限制，启动新的查询
+                while (queue.length > 0 && activePromises.length < concurrentLimit) {
+                    const contractAddress = queue.shift();
+
+                    // 创建一个新的Promise，处理完成后从活动Promise列表中移除
+                    const promise = processContract(contractAddress).finally(() => {
+                        const index = activePromises.indexOf(promise);
+                        if (index !== -1) {
+                            activePromises.splice(index, 1);
+                        }
+
+                        // 继续处理队列
+                        processQueue();
+                    });
+
+                    // 添加到活动Promise列表
+                    activePromises.push(promise);
+                }
+
+                // 如果队列为空，但还有活动的Promise，等待它们完成
+                if (queue.length === 0 && activePromises.length > 0) {
+                    // 不需要做任何事情，活动的Promise完成后会调用processQueue
+                }
+            };
+
+            // 开始处理队列
+            processQueue();
+        });
+    }
+
+    // 格式化时间戳
+    formatTimestamp(timestamp) {
+        const date = new Date(timestamp * 1000);
+        return date.toLocaleString();
+    }
+}
+
+// 创建 API 服务实例
+const apiService = new ApiService();

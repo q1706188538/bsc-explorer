@@ -25,9 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof ethers === 'undefined') {
         console.error('ethers库未正确加载');
 
-        // 尝试手动加载ethers
+        // 尝试手动加载ethers (从本地加载)
         const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js';
+        script.src = '/ethers.min.js'; // 从本地加载
         script.type = 'text/javascript';
         script.onload = function() {
             console.log('手动加载ethers成功，版本:', window.ethers ? window.ethers.version : '未知');
@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         script.onerror = function() {
             console.error('手动加载ethers失败');
-            alert('ethers库加载失败，请检查网络连接并刷新页面');
+            alert('ethers库加载失败，请检查服务器是否包含ethers.min.js文件');
         };
         document.head.appendChild(script);
         return;
@@ -50,9 +50,9 @@ function initApp() {
     console.log('开始初始化应用...');
 
     try {
-        // 初始化BSC服务
-        console.log('初始化BscService...');
-        const bscService = new BscService();
+        // 使用API服务
+        console.log('使用ApiService...');
+        const bscService = apiService; // 使用apiService替代bscService
 
         // 获取DOM元素
         const tabBtns = document.querySelectorAll('.tab-btn');
@@ -104,7 +104,7 @@ function initApp() {
         let currentPageNum = 1;
         let currentTxType = 'all'; // 'all', 'in', 'out'
         let selectedTokens = []; // 存储多个选中的币种
-        const pageSize = 50;
+        const pageSize = 5000; // 增加到5000条，接近BSCScan API的最大限制
 
         // 存储交易中出现的所有代币符号
         let tokenSymbols = new Set();
@@ -175,29 +175,132 @@ function initApp() {
 
             // 收集筛选后的交易中包含的合约
             filteredTransactions.forEach(tx => {
-                // 检查发送方和接收方是否是代币合约
-                if (bscService.isTokenContract(tx.from)) {
-                    const contractInfo = bscService.getTokenContractInfo(tx.from);
-                    if (contractInfo) {
-                        filteredTransactionContracts[tx.from.toLowerCase()] = contractInfo;
+                // 检查发送方和接收方是否是合约地址（不一定是代币合约）
+                // 这里我们假设所有以"0x"开头的地址都可能是合约
+                if (tx.from && tx.from.startsWith('0x')) {
+                    // 尝试将发送方地址添加为可能的合约
+                    if (!bscService.isTokenContract(tx.from)) {
+                        // 如果不是已知的代币合约，添加为未知合约
+                        // 使用合约地址的前4位和后4位作为名称
+                        const shortAddr = `${tx.from.substring(0, 6)}...${tx.from.substring(tx.from.length - 4)}`;
+                        const tokenName = `Token ${shortAddr}`;
+                        // 使用合约地址的前4位作为符号
+                        const tokenSymbol = tx.from.substring(2, 6).toUpperCase();
+
+                        filteredTransactionContracts[tx.from.toLowerCase()] = {
+                            address: tx.from,
+                            name: tokenName,
+                            symbol: tokenSymbol,
+                            creator: 'Unknown',
+                            createdByCurrentAddress: false
+                        };
+
+                        // 添加到代币合约列表，以便后续查询
+                        bscService.tokenContracts[tx.from.toLowerCase()] = filteredTransactionContracts[tx.from.toLowerCase()];
+                    } else {
+                        // 如果是已知的代币合约，添加到筛选结果中
+                        const contractInfo = bscService.getTokenContractInfo(tx.from);
+                        if (contractInfo) {
+                            filteredTransactionContracts[tx.from.toLowerCase()] = contractInfo;
+                        }
                     }
                 }
 
-                if (bscService.isTokenContract(tx.to)) {
-                    const contractInfo = bscService.getTokenContractInfo(tx.to);
-                    if (contractInfo) {
-                        filteredTransactionContracts[tx.to.toLowerCase()] = contractInfo;
+                if (tx.to && tx.to.startsWith('0x')) {
+                    // 尝试将接收方地址添加为可能的合约
+                    if (!bscService.isTokenContract(tx.to)) {
+                        // 如果不是已知的代币合约，添加为未知合约
+                        // 使用合约地址的前4位和后4位作为名称
+                        const shortAddr = `${tx.to.substring(0, 6)}...${tx.to.substring(tx.to.length - 4)}`;
+                        const tokenName = `Token ${shortAddr}`;
+                        // 使用合约地址的前4位作为符号
+                        const tokenSymbol = tx.to.substring(2, 6).toUpperCase();
+
+                        filteredTransactionContracts[tx.to.toLowerCase()] = {
+                            address: tx.to,
+                            name: tokenName,
+                            symbol: tokenSymbol,
+                            creator: 'Unknown',
+                            createdByCurrentAddress: false
+                        };
+
+                        // 添加到代币合约列表，以便后续查询
+                        bscService.tokenContracts[tx.to.toLowerCase()] = filteredTransactionContracts[tx.to.toLowerCase()];
+                    } else {
+                        // 如果是已知的代币合约，添加到筛选结果中
+                        const contractInfo = bscService.getTokenContractInfo(tx.to);
+                        if (contractInfo) {
+                            filteredTransactionContracts[tx.to.toLowerCase()] = contractInfo;
+                        }
                     }
                 }
 
                 // 如果是代币交易，也添加代币合约
                 if (tx.type === 'Token' && tx.contractAddress) {
-                    const contractInfo = bscService.getTokenContractInfo(tx.contractAddress);
-                    if (contractInfo) {
-                        filteredTransactionContracts[tx.contractAddress.toLowerCase()] = contractInfo;
+                    if (!bscService.isTokenContract(tx.contractAddress)) {
+                        // 如果不是已知的代币合约，添加为未知合约
+                        // 使用交易中的代币名称和符号（如果有）
+                        let tokenName = tx.tokenName || '';
+                        let tokenSymbol = tx.tokenSymbol || '';
+
+                        // 如果有符号但没有名称，使用符号作为名称的一部分
+                        if (tokenSymbol && !tokenName) {
+                            tokenName = tokenSymbol + ' Token';
+                        }
+                        // 如果有名称但没有符号，从名称中提取符号
+                        else if (tokenName && !tokenSymbol) {
+                            // 尝试从名称中提取符号（通常是名称的首字母或第一个单词）
+                            if (tokenName.includes(' ')) {
+                                // 如果名称包含空格，取第一个单词作为符号
+                                tokenSymbol = tokenName.split(' ')[0].toUpperCase();
+                            } else {
+                                // 否则，取名称的前3-4个字母作为符号
+                                tokenSymbol = tokenName.substring(0, Math.min(4, tokenName.length)).toUpperCase();
+                            }
+                        }
+
+                        // 如果仍然没有有效的名称和符号，使用合约地址生成
+                        if (!tokenName) {
+                            // 使用合约地址的前4位和后4位作为名称
+                            const shortAddr = `${tx.contractAddress.substring(0, 6)}...${tx.contractAddress.substring(tx.contractAddress.length - 4)}`;
+                            tokenName = `Token ${shortAddr}`;
+                        }
+
+                        if (!tokenSymbol) {
+                            // 使用合约地址的前4位作为符号
+                            tokenSymbol = tx.contractAddress.substring(2, 6).toUpperCase();
+                        }
+
+                        console.log(`添加代币合约: ${tx.contractAddress}, 名称: ${tokenName}, 符号: ${tokenSymbol}`);
+
+                        filteredTransactionContracts[tx.contractAddress.toLowerCase()] = {
+                            address: tx.contractAddress,
+                            name: tokenName,
+                            symbol: tokenSymbol,
+                            creator: 'Unknown',
+                            createdByCurrentAddress: false
+                        };
+
+                        // 添加到代币合约列表，以便后续查询
+                        bscService.tokenContracts[tx.contractAddress.toLowerCase()] = filteredTransactionContracts[tx.contractAddress.toLowerCase()];
+                    } else {
+                        // 如果是已知的代币合约，添加到筛选结果中
+                        const contractInfo = bscService.getTokenContractInfo(tx.contractAddress);
+                        if (contractInfo) {
+                            filteredTransactionContracts[tx.contractAddress.toLowerCase()] = contractInfo;
+                        }
                     }
                 }
             });
+
+            // 打印当前的代币合约列表，用于调试
+            console.log(`当前有 ${Object.keys(bscService.tokenContracts).length} 个代币合约`);
+            console.log(`当前筛选的交易中包含 ${Object.keys(filteredTransactionContracts).length} 个合约`);
+
+            // 更新所有代币合约的名称和符号
+            if (typeof bscService.updateAllTokenContractNames === 'function') {
+                bscService.updateAllTokenContractNames();
+            }
 
             // 如果没有交易记录
             if (filteredTransactions.length === 0) {
@@ -244,9 +347,6 @@ function initApp() {
                         valueDisplay = `${tx.value} <span class="token-info" title="${tokenInfo.name}">(${tokenInfo.symbol})</span>`;
                     }
                 }
-
-                // 创建代币标签
-                const tokenLabel = `<span class="token-symbol-label" data-token="${tokenSymbol}">${tokenSymbol}</span>`;
 
                 // 检查是否是当前筛选的币种（支持多选）
                 const isHighlighted = selectedTokens.length > 0 && selectedTokens.includes(tokenSymbol);
@@ -1060,8 +1160,31 @@ function initApp() {
                 return;
             }
 
+            // 检查是否通过了代币销毁验证
+            if (!burnVerificationPassed) {
+                alert('请先验证代币销毁交易，验证通过后才能查询转账记录');
+                // 滚动到验证部分
+                document.querySelector('.burn-verification').scrollIntoView({ behavior: 'smooth' });
+                return;
+            }
+
             // 保存当前地址
             currentAddress = address;
+
+            // 添加验证通过标记
+            const verificationLabel = document.createElement('span');
+            verificationLabel.className = 'verification-passed';
+            verificationLabel.textContent = '✓ 已验证';
+            verificationLabel.title = `已验证销毁交易: ${verifiedBurnTxHash}`;
+
+            // 检查是否已经有标记
+            const existingLabel = document.querySelector('.verification-passed');
+            if (!existingLabel) {
+                const txQueryHeading = document.querySelector('#txQuerySection h3');
+                if (txQueryHeading) {
+                    txQueryHeading.appendChild(verificationLabel);
+                }
+            }
 
             // 重置交易类型为"全部"
             currentTxType = 'all';
@@ -1153,14 +1276,31 @@ function initApp() {
                 contractResults.style.display = 'none';
                 contractInfo.innerHTML = '';
 
+                console.log(`开始查询合约信息: ${contractAddress}`);
+
                 // 获取合约信息（传递当前查询的钱包地址，用于标记由该地址创建的合约）
                 const contract = await bscService.getContractInfo(contractAddress, currentAddress);
+
+                console.log('合约信息查询结果:', contract);
 
                 // 查询完成后，更新合约列表（如果存在）
                 updateTokenListPage();
 
                 // 隐藏加载中
                 contractLoading.style.display = 'none';
+
+                // 如果有错误信息，显示错误
+                if (contract.error) {
+                    contractInfo.innerHTML = `
+                        <div class="error-message" style="padding: 15px; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; color: #721c24; margin-top: 15px;">
+                            <h4>❌ 查询失败</h4>
+                            <p><strong>错误信息:</strong> ${contract.error}</p>
+                            <p>请检查合约地址是否正确，或者稍后再试。</p>
+                        </div>
+                    `;
+                    contractResults.style.display = 'block';
+                    return;
+                }
 
                 // 显示合约信息
                 let infoHtml = `
@@ -1211,11 +1351,34 @@ function initApp() {
                     `;
                 }
 
+                // 添加调试信息（仅在开发环境中显示）
+                infoHtml += `
+                    <div class="debug-info" style="margin-top: 20px; padding: 10px; background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; color: #6c757d;">
+                        <h4>调试信息</h4>
+                        <p><strong>会话状态:</strong> ${burnVerificationPassed ? '已验证' : '未验证'}</p>
+                        <p><strong>验证交易哈希:</strong> ${verifiedBurnTxHash || '无'}</p>
+                        <p><strong>当前查询地址:</strong> ${currentAddress || '无'}</p>
+                        <p><strong>是否为代币合约:</strong> ${contract.isToken ? '是' : '否'}</p>
+                        <p><strong>ABI消息:</strong> ${contract.abiMessage || '无'}</p>
+                    </div>
+                `;
+
                 contractInfo.innerHTML = infoHtml;
                 contractResults.style.display = 'block';
             } catch (error) {
+                console.error('获取合约信息失败:', error);
                 contractLoading.style.display = 'none';
-                alert('获取合约信息失败: ' + error.message);
+
+                contractInfo.innerHTML = `
+                    <div class="error-message" style="padding: 15px; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; color: #721c24; margin-top: 15px;">
+                        <h4>❌ 查询失败</h4>
+                        <p><strong>错误信息:</strong> ${error.message}</p>
+                        <p>请检查合约地址是否正确，或者稍后再试。</p>
+                        <p><strong>调试信息:</strong></p>
+                        <pre style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; overflow: auto;">${error.stack || '无堆栈信息'}</pre>
+                    </div>
+                `;
+                contractResults.style.display = 'block';
             }
         });
 
@@ -1414,6 +1577,190 @@ function initApp() {
             console.error('初始化合约列表失败:', error);
         });
 
+        // 代币销毁验证功能
+        const burnTxHashInput = document.getElementById('burnTxHash');
+        const checkBurnTxBtn = document.getElementById('checkBurnTx');
+        const burnLoading = document.getElementById('burnLoading');
+        const burnResults = document.getElementById('burnResults');
+        const burnInfo = document.getElementById('burnInfo');
+        const txQuerySection = document.getElementById('txQuerySection');
+
+        // 隐藏加载中和结果
+        burnLoading.style.display = 'none';
+        burnResults.style.display = 'none';
+
+        // 存储验证状态
+        let burnVerificationPassed = false;
+        let verifiedBurnTxHash = '';
+
+        // 页面加载时检查验证状态
+        async function checkVerificationStatus() {
+            try {
+                const status = await bscService.getVerificationStatus();
+                if (status.verified) {
+                    burnVerificationPassed = true;
+                    verifiedBurnTxHash = status.txHash;
+
+                    // 显示查询部分
+                    txQuerySection.style.display = 'block';
+
+                    console.log('验证状态已恢复:', status);
+                }
+            } catch (error) {
+                console.error('检查验证状态失败:', error);
+            }
+        }
+
+        // 页面加载时检查验证状态
+        checkVerificationStatus();
+
+        // 验证代币销毁按钮点击事件
+        checkBurnTxBtn.addEventListener('click', async () => {
+            const txHash = burnTxHashInput.value.trim();
+
+            if (!txHash) {
+                alert('请输入交易哈希');
+                return;
+            }
+
+            try {
+                // 重置验证状态
+                burnVerificationPassed = false;
+                txQuerySection.style.display = 'none';
+
+                // 显示加载中
+                burnLoading.style.display = 'block';
+                burnResults.style.display = 'none';
+                burnInfo.innerHTML = '';
+
+                // 查询代币销毁信息
+                const burnResult = await bscService.checkTokenBurn(txHash);
+
+                // 隐藏加载中
+                burnLoading.style.display = 'none';
+
+                // 显示结果
+                if (burnResult.found) {
+                    // 检查是否是特定的代币合约和数量
+                    if (burnResult.isValidBurn) {
+                        // 验证通过
+                        burnVerificationPassed = true;
+                        verifiedBurnTxHash = txHash;
+
+                        burnInfo.innerHTML = `
+                            <div class="burn-success">
+                                <h4>✅ 验证通过</h4>
+                                <p><strong>交易哈希:</strong>
+                                    <a href="https://bscscan.com/tx/${txHash}" target="_blank">${txHash}</a>
+                                </p>
+                                <p><strong>销毁数量:</strong> ${burnResult.amount} ${burnResult.symbol} <span class="verification-check">✓ 符合要求</span></p>
+                                <p><strong>代币名称:</strong> ${burnResult.token.name}</p>
+                                <p><strong>代币符号:</strong> ${burnResult.symbol}</p>
+                                <p><strong>代币合约:</strong>
+                                    <a href="https://bscscan.com/token/${burnResult.token.address}" target="_blank">${burnResult.token.address}</a>
+                                    <span class="verification-check">✓ 符合要求</span>
+                                </p>
+                                <p><strong>销毁者地址:</strong>
+                                    <a href="https://bscscan.com/address/${burnResult.from}" target="_blank">${burnResult.from}</a>
+                                    <button id="useFromAddress" class="btn-sm">使用此地址</button>
+                                </p>
+                                <p><strong>销毁地址:</strong>
+                                    <a href="https://bscscan.com/address/${burnResult.burnAddress}" target="_blank">${burnResult.burnAddress}</a>
+                                    ${burnResult.burnAddress.toLowerCase() === '0x000000000000000000000000000000000000dead' ? ' (Dead 地址)' : ''}
+                                </p>
+                                <p><strong>销毁方式:</strong> 转账到 Dead 地址</p>
+                                <div class="verification-actions">
+                                    <button id="proceedToQuery" class="btn">继续查询转账记录</button>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        // 找到销毁操作，但不是特定的代币或数量
+                        burnVerificationPassed = false;
+
+                        let errorMessage = '';
+                        if (!burnResult.isTargetContract) {
+                            errorMessage += `<p>销毁的代币合约地址不符合要求。要求地址为: 0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444</p>`;
+                        }
+                        if (!burnResult.isTargetAmount) {
+                            errorMessage += `<p>销毁的代币数量不符合要求。要求数量必须精确为: 100（当前数量: ${burnResult.amount}）</p>`;
+                        }
+
+                        burnInfo.innerHTML = `
+                            <div class="burn-warning">
+                                <h4>⚠️ 验证未通过</h4>
+                                <p>发现销毁操作，但不符合特定要求：</p>
+                                ${errorMessage}
+                                <p><strong>交易哈希:</strong>
+                                    <a href="https://bscscan.com/tx/${txHash}" target="_blank">${txHash}</a>
+                                </p>
+                                <p><strong>销毁数量:</strong> ${burnResult.amount} ${burnResult.symbol} ${burnResult.isTargetAmount ? '<span class="verification-check">✓</span>' : '<span class="verification-error">✗</span>'}</p>
+                                <p><strong>代币合约:</strong>
+                                    <a href="https://bscscan.com/token/${burnResult.token.address}" target="_blank">${burnResult.token.address}</a>
+                                    ${burnResult.isTargetContract ? '<span class="verification-check">✓</span>' : '<span class="verification-error">✗</span>'}
+                                </p>
+                                <p>请提供一个销毁了 0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444 代币，数量为 100 的交易哈希。</p>
+                            </div>
+                        `;
+                    }
+
+                    // 如果验证通过，添加按钮事件
+                    if (burnVerificationPassed) {
+                        // 添加"使用此地址"按钮事件
+                        document.getElementById('useFromAddress').addEventListener('click', () => {
+                            document.getElementById('address').value = burnResult.from;
+                        });
+
+                        // 添加"继续查询转账记录"按钮事件
+                        document.getElementById('proceedToQuery').addEventListener('click', () => {
+                            // 显示查询部分
+                            txQuerySection.style.display = 'block';
+
+                            // 自动填充销毁者地址
+                            document.getElementById('address').value = burnResult.from;
+
+                            // 滚动到查询部分
+                            txQuerySection.scrollIntoView({ behavior: 'smooth' });
+                        });
+                    }
+                } else {
+                    burnInfo.innerHTML = `
+                        <div class="burn-not-found">
+                            <h4>❌ 验证失败</h4>
+                            <p>在交易 <a href="https://bscscan.com/tx/${txHash}" target="_blank">${txHash}</a> 中未找到代币销毁操作。</p>
+                            <p>可能的原因:</p>
+                            <ul>
+                                <li>这不是一个代币销毁交易</li>
+                                <li>销毁方式不是转账到 Dead 地址 (0x000000000000000000000000000000000000dEaD)</li>
+                                <li>交易失败或未确认</li>
+                                <li>交易哈希不正确</li>
+                            </ul>
+                            <p>请提供一个销毁了 0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444 代币，数量必须精确为 100 的交易哈希。</p>
+                        </div>
+                    `;
+                }
+
+                // 显示结果
+                burnResults.style.display = 'block';
+
+            } catch (error) {
+                // 隐藏加载中
+                burnLoading.style.display = 'none';
+
+                // 显示错误信息
+                burnInfo.innerHTML = `
+                    <div class="burn-error">
+                        <h4>❌ 验证失败</h4>
+                        <p>错误信息: ${error.message}</p>
+                        <p>请确认交易哈希是否正确，并重试。</p>
+                    </div>
+                `;
+
+                // 显示结果
+                burnResults.style.display = 'block';
+            }
+        });
+
         // 进度更新定时器
         let progressUpdateTimer = null;
 
@@ -1447,7 +1794,80 @@ function initApp() {
                 return;
             }
 
-            console.log('自动开始查询合约创建者信息...');
+            // 检查代币合约列表是否为空
+            const tokenContracts = bscService.getTokenContracts();
+            const contractCount = Object.keys(tokenContracts).length;
+
+            console.log(`自动开始查询合约创建者信息... 当前有 ${contractCount} 个代币合约`);
+
+            // 如果代币合约列表为空，尝试从交易记录中收集合约
+            if (contractCount === 0) {
+                console.log('代币合约列表为空，尝试从交易记录中收集合约...');
+
+                // 获取当前缓存的交易记录
+                const cachedTransactions = bscService.getCachedTransactions(currentAddress, currentPageNum, pageSize);
+
+                if (cachedTransactions && cachedTransactions.transactions) {
+                    console.log(`从缓存中找到 ${cachedTransactions.transactions.length} 条交易记录`);
+
+                    // 从交易记录中收集合约地址
+                    cachedTransactions.transactions.forEach(tx => {
+                        // 检查发送方和接收方是否是合约地址
+                        if (tx.to && tx.to.startsWith('0x')) {
+                            // 添加为未知合约
+                            // 如果是代币交易，尝试使用代币名称和符号
+                            if (tx.type === 'Token' && tx.tokenName && tx.tokenSymbol) {
+                                bscService.tokenContracts[tx.to.toLowerCase()] = {
+                                    address: tx.to,
+                                    name: tx.tokenName,
+                                    symbol: tx.tokenSymbol,
+                                    creator: 'Unknown',
+                                    createdByCurrentAddress: false
+                                };
+                                console.log(`添加合约 (to): ${tx.to}, 名称: ${tx.tokenName}, 符号: ${tx.tokenSymbol}`);
+                            } else {
+                                // 如果不是代币交易，或者没有代币名称和符号，添加为未知合约
+                                bscService.tokenContracts[tx.to.toLowerCase()] = {
+                                    address: tx.to,
+                                    name: 'Unknown Contract',
+                                    symbol: 'UNKNOWN',
+                                    creator: 'Unknown',
+                                    createdByCurrentAddress: false
+                                };
+                                console.log(`添加未知合约 (to): ${tx.to}`);
+                            }
+                        }
+
+                        // 如果是代币交易，添加代币合约
+                        if (tx.type === 'Token' && tx.contractAddress) {
+                            // 使用交易中的代币名称和符号（如果有）
+                            const tokenName = tx.tokenName || (tx.tokenSymbol ? tx.tokenSymbol + ' Token' : 'Unknown Token');
+                            const tokenSymbol = tx.tokenSymbol || 'UNKNOWN';
+
+                            bscService.tokenContracts[tx.contractAddress.toLowerCase()] = {
+                                address: tx.contractAddress,
+                                name: tokenName,
+                                symbol: tokenSymbol,
+                                creator: 'Unknown',
+                                createdByCurrentAddress: false
+                            };
+
+                            console.log(`添加代币合约 (contractAddress): ${tx.contractAddress}, 名称: ${tokenName}, 符号: ${tokenSymbol}`);
+                        }
+                    });
+
+                    console.log(`从交易记录中收集到 ${Object.keys(bscService.tokenContracts).length} 个合约地址`);
+                } else {
+                    console.log('没有找到缓存的交易记录');
+                }
+            }
+
+            // 再次检查代币合约列表是否为空
+            const updatedContractCount = Object.keys(bscService.tokenContracts).length;
+            if (updatedContractCount === 0) {
+                console.log('代币合约列表仍然为空，无法查询创建者信息');
+                return;
+            }
 
             // 查询所有合约创建者信息（不等待结果，在后台进行）
             bscService.queryAllContractCreators().then(() => {

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配置管理</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button.secondary {
+            background-color: #2196F3;
+        }
+        button.secondary:hover {
+            background-color: #0b7dda;
+        }
+        button.danger {
+            background-color: #f44336;
+        }
+        button.danger:hover {
+            background-color: #d32f2f;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .success {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .error {
+            color: #f44336;
+            font-weight: bold;
+        }
+        .config-section {
+            margin-bottom: 30px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        input[type="checkbox"] {
+            margin-right: 5px;
+        }
+        .array-input {
+            margin-bottom: 10px;
+        }
+        .array-input button {
+            padding: 5px 10px;
+            font-size: 14px;
+            margin-left: 5px;
+        }
+        .array-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .array-item input {
+            flex-grow: 1;
+            margin-right: 5px;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 15px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: none;
+            border-radius: 4px 4px 0 0;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background-color: #f9f9f9;
+            border-color: #ddd;
+            border-bottom-color: #f9f9f9;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>配置管理</h1>
+
+    <!-- 注释掉标签页导航
+    <div class="tabs">
+        <div class="tab" data-tab="edit">编辑配置</div>
+        <div class="tab active" data-tab="view">查看配置</div>
+        <div class="tab" data-tab="reload">重新加载配置</div>
+    </div>
+    -->
+
+    <!-- 只保留代币销毁验证配置 -->
+    <div class="tab-content active" id="edit">
+        <h2>代币销毁验证配置</h2>
+        <p>在这里可以修改代币销毁验证配置，修改后点击"保存配置"按钮保存更改。</p>
+
+        <div class="config-section">
+            <h3>代币销毁验证配置</h3>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="burnVerification_enabled"> 启用代币销毁验证功能
+                </label>
+            </div>
+            <div class="form-group">
+                <label for="burnVerification_targetContractAddress">目标合约地址:</label>
+                <input type="text" id="burnVerification_targetContractAddress">
+            </div>
+            <div class="form-group">
+                <label for="burnVerification_targetAmount">目标数量:</label>
+                <input type="text" id="burnVerification_targetAmount">
+            </div>
+            <div class="form-group">
+                <label for="burnVerification_burnAddress">销毁地址:</label>
+                <input type="text" id="burnVerification_burnAddress">
+            </div>
+        </div>
+
+        <!-- 注释掉其他配置部分
+        <div class="config-section">
+            <h3>BSCScan API 配置</h3>
+            <div class="form-group">
+                <label for="bscScan_apiUrl">API URL:</label>
+                <input type="text" id="bscScan_apiUrl">
+            </div>
+            <div class="form-group">
+                <label for="bscScan_maxConcurrent">最大并发请求数:</label>
+                <input type="number" id="bscScan_maxConcurrent" min="1" max="10">
+            </div>
+            <div class="form-group">
+                <label>API Keys:</label>
+                <div id="bscScan_apiKeys_container">
+                </div>
+                <button type="button" id="add_apiKey" class="secondary">添加API Key</button>
+            </div>
+        </div>
+
+        <div class="config-section">
+            <h3>Moralis API 配置</h3>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="moralis_enabled"> 启用Moralis API
+                </label>
+            </div>
+            <div id="moralis_config_section" style="display: none;">
+                <div class="form-group">
+                    <label for="moralis_apiUrl">API URL:</label>
+                    <input type="text" id="moralis_apiUrl" placeholder="例如: https://deep-index.moralis.io/api/v2">
+                </div>
+                <div class="form-group">
+                    <label for="moralis_apiKey">API Key:</label>
+                    <input type="text" id="moralis_apiKey" placeholder="输入Moralis API Key">
+                </div>
+                <div class="form-group">
+                    <label for="moralis_maxConcurrent">最大并发请求数:</label>
+                    <input type="number" id="moralis_maxConcurrent" min="1" max="50" value="10">
+                </div>
+            </div>
+        </div>
+
+        <div class="config-section">
+            <h3>BSC 节点配置</h3>
+            <div class="form-group">
+                <label>RPC URLs:</label>
+                <div id="bscNode_rpcUrls_container">
+                </div>
+                <button type="button" id="add_rpcUrl" class="secondary">添加RPC URL</button>
+            </div>
+        </div>
+        -->
+
+        <button id="saveBtn">保存配置</button>
+        <button id="resetBtn" class="danger">重置表单</button>
+
+        <div id="saveResult" style="margin-top: 20px;"></div>
+    </div>
+
+    <!-- 注释掉查看配置标签页
+    <div class="tab-content active" id="view">
+        <h2>当前配置</h2>
+        <button id="refreshConfigBtn" class="secondary">刷新配置</button>
+        <div id="loadingIndicator"><span class="loading"></span>正在加载配置...</div>
+        <pre id="currentConfig" style="display: none;">加载中...</pre>
+    </div>
+    -->
+
+    <!-- 注释掉重新加载配置标签页
+    <div class="tab-content" id="reload">
+        <h2>重新加载配置</h2>
+        <p>点击下面的按钮重新加载配置文件，无需重启服务器。</p>
+
+        <button id="reloadBtn">重新加载配置</button>
+
+        <h3>重新加载结果</h3>
+        <pre id="reloadResult">尚未重新加载</pre>
+    </div>
+    -->
+
+    <!-- 使用外部JavaScript文件 -->
+    <script src="/js/reload-config.js"></script>
+</body>
+</html>

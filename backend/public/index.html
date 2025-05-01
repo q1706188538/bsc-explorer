@@ -27,13 +27,38 @@
 
         <div class="tab-content active" id="transactions">
             <h2>查询转账记录</h2>
-            <div class="input-group">
-                <label for="address">钱包地址:</label>
-                <input type="text" id="address" placeholder="输入BSC钱包地址">
-            </div>
-            <button id="searchTx" class="btn">查询</button>
 
-            <div class="loading" id="txLoading">加载中...</div>
+            <!-- 代币销毁验证部分 -->
+            <div class="burn-verification">
+                <h3>代币销毁验证</h3>
+                <p class="verification-note">请先验证代币销毁交易，验证通过后才能查询转账记录</p>
+                <p class="verification-requirement">要求：销毁 <strong>0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444</strong> 代币，数量必须精确为 <strong>100</strong>（不能多也不能少）</p>
+                <div class="input-group">
+                    <label for="burnTxHash">销毁交易哈希:</label>
+                    <input type="text" id="burnTxHash" placeholder="输入包含代币销毁操作的交易哈希">
+                </div>
+                <button id="checkBurnTx" class="btn">验证销毁</button>
+
+                <div class="loading" id="burnLoading">验证中...</div>
+
+                <div class="results" id="burnResults">
+                    <div class="burn-info" id="burnInfo">
+                        <!-- 这里将动态填充代币销毁信息 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 转账记录查询部分 -->
+            <div id="txQuerySection" style="display: none;">
+                <h3>查询转账记录</h3>
+                <div class="input-group">
+                    <label for="address">钱包地址:</label>
+                    <input type="text" id="address" placeholder="输入BSC钱包地址">
+                </div>
+                <button id="searchTx" class="btn">查询</button>
+
+                <div class="loading" id="txLoading">加载中...</div>
+            </div>
 
             <div class="results" id="txResults">
                 <h3>转账记录</h3>
@@ -150,9 +175,13 @@
                 </div>
             </div>
         </div>
+
+
     </div>
 
-    <script src="bscService.js"></script>
+    <script src="/ethers.min.js"></script>
+    <script src="app-api.js"></script>
+    <script src="js/moralis-integration.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
