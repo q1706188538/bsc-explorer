@@ -35,6 +35,12 @@ app.use(cors({
   credentials: true
 }));
 
+// 添加头信息，告诉浏览器不要升级到 HTTPS
+app.use((req, res, next) => {
+  res.setHeader('Strict-Transport-Security', 'max-age=0');
+  next();
+});
+
 // 请求日志
 app.use(morgan('dev'));
 
