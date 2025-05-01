@@ -394,8 +394,14 @@ function initApp() {
                 // 显示代币合约提示（如果有代币合约）
                 showContractHint();
 
+                // 显示合约创建者查询提示
+                showContractCreatorsQueryHint();
+
                 // 更新合约列表页面
                 updateTokenListPage();
+
+                // 自动开始查询合约创建者信息（在后台进行，不阻塞界面）
+                startContractCreatorsQuery();
 
                 // 添加合约查看按钮事件
                 document.querySelectorAll('.view-contract-btn').forEach(btn => {
@@ -728,6 +734,60 @@ function initApp() {
             updateTokenListPage();
         }
 
+        // 显示合约创建者查询提示
+        function showContractCreatorsQueryHint() {
+            // 获取当前查询进度
+            const progress = bscService.getContractCreatorsQueryProgress();
+
+            // 如果正在查询，显示提示
+            if (progress.isQuerying) {
+                // 创建提示元素
+                const hintElement = document.createElement('div');
+                hintElement.className = 'creator-query-hint';
+                hintElement.innerHTML = `
+                    <p>系统正在后台查询合约创建者信息，您可以在"我创建的合约"标签页查看进度。</p>
+                    <button class="view-created-contracts-btn">查看我创建的合约</button>
+                `;
+
+                // 添加样式
+                hintElement.style.backgroundColor = '#e8f4f8';
+                hintElement.style.border = '1px solid #b8e0ed';
+                hintElement.style.borderRadius = '4px';
+                hintElement.style.padding = '10px';
+                hintElement.style.margin = '10px 0';
+
+                // 添加到交易记录表格之前
+                const txTable = document.querySelector('table');
+                if (txTable && !document.querySelector('.creator-query-hint')) {
+                    // 如果已有合约提示，添加到其后
+                    const contractHint = document.querySelector('.contract-hint');
+                    if (contractHint) {
+                        contractHint.parentNode.insertBefore(hintElement, contractHint.nextSibling);
+                    } else {
+                        txTable.parentNode.insertBefore(hintElement, txTable);
+                    }
+
+                    // 添加按钮点击事件
+                    const viewCreatedContractsBtn = hintElement.querySelector('.view-created-contracts-btn');
+                    viewCreatedContractsBtn.addEventListener('click', () => {
+                        // 切换到合约列表标签页
+                        tabBtns.forEach(tabBtn => {
+                            if (tabBtn.getAttribute('data-tab') === 'token-list') {
+                                tabBtn.click();
+
+                                // 切换到"我创建的合约"标签
+                                contractTypeBtns.forEach(btn => {
+                                    if (btn.getAttribute('data-type') === 'created') {
+                                        btn.click();
+                                    }
+                                });
+                            }
+                        });
+                    });
+                }
+            }
+        }
+
         // 获取合约关联的交易 HTML
         function getRelatedTransactionsHTML(contractAddress) {
             // 获取合约关联的交易
@@ -762,186 +822,209 @@ function initApp() {
         }
 
         // 更新合约列表页面
-        function updateTokenListPage(searchTerm = '') {
-            // 获取代币合约列表
-            const tokenContracts = bscService.getTokenContracts();
-            let contractsArray = Object.values(tokenContracts);
+        async function updateTokenListPage(searchTerm = '') {
+            // 检查是否正在查询合约创建者信息
+            const progress = bscService.getContractCreatorsQueryProgress();
 
-            // 根据当前选择的类型过滤合约
-            if (currentContractType === 'created') {
-                // 获取由当前地址创建的合约
-                const createdContracts = bscService.getCreatedContracts();
-                contractsArray = Object.values(createdContracts);
-            } else if (currentContractType === 'filtered') {
-                // 获取当前筛选交易中包含的合约
-                contractsArray = Object.values(filteredTransactionContracts);
+            // 如果是"我创建的合约"标签页，并且正在查询中，显示进度
+            if (currentContractType === 'created' && progress.isQuerying) {
+                showContractCreatorsQueryProgress();
+                return; // 不继续更新列表，等待查询完成
             }
 
-            // 如果有搜索词，过滤合约
-            let filteredContracts = contractsArray;
-            if (searchTerm) {
-                const term = searchTerm.toLowerCase();
-                filteredContracts = contractsArray.filter(contract =>
-                    contract.symbol.toLowerCase().includes(term) ||
-                    contract.name.toLowerCase().includes(term) ||
-                    contract.address.toLowerCase().includes(term)
-                );
-            }
+            // 显示加载中状态
+            tokenListEmpty.style.display = 'block';
+            tokenListEmpty.innerHTML = '<p>加载中，请稍候...</p>';
+            tokenListGrid.style.display = 'none';
 
-            // 如果没有代币合约，显示空状态
-            if (filteredContracts.length === 0) {
-                tokenListEmpty.style.display = 'block';
-                tokenListGrid.style.display = 'none';
+            try {
+                // 获取代币合约列表
+                const tokenContracts = bscService.getTokenContracts();
+                let contractsArray = Object.values(tokenContracts);
 
-                // 根据不同情况显示不同的消息
-                if (searchTerm) {
-                    tokenListEmpty.innerHTML = `<p>没有找到匹配"${searchTerm}"的代币合约。</p>`;
-                } else if (currentContractType === 'created') {
-                    if (contractsArray.length === 0) {
-                        tokenListEmpty.innerHTML = `<p>未发现由当前地址创建的合约。</p>
-                        <p>如果您确信该地址创建过合约，请尝试在"合约信息"标签页中查询具体的合约地址。</p>`;
-                    } else {
-                        tokenListEmpty.innerHTML = `<p>没有找到符合条件的合约。</p>`;
-                    }
+                // 根据当前选择的类型过滤合约
+                if (currentContractType === 'created') {
+                    // 获取由当前地址创建的合约（使用异步方法）
+                    const createdContracts = await bscService.getCreatedContracts();
+                    contractsArray = Object.values(createdContracts);
                 } else if (currentContractType === 'filtered') {
-                    if (contractsArray.length === 0) {
-                        if (selectedTokens.length > 0) {
-                            tokenListEmpty.innerHTML = `<p>当前筛选的交易中未包含任何合约。</p>
-                            <p>当前筛选: ${selectedTokens.join(', ')}</p>`;
-                        } else {
-                            tokenListEmpty.innerHTML = `<p>请先在"转账记录"标签页筛选交易，然后查看相关的合约。</p>`;
-                        }
-                    } else {
-                        tokenListEmpty.innerHTML = `<p>没有找到符合条件的合约。</p>`;
-                    }
-                } else if (contractsArray.length === 0) {
-                    tokenListEmpty.innerHTML = `<p>暂无代币合约。请先在"转账记录"标签页查询钱包地址，系统会自动识别相关的代币合约。</p>`;
+                    // 获取当前筛选交易中包含的合约
+                    contractsArray = Object.values(filteredTransactionContracts);
                 }
-                return;
-            }
 
-            // 有合约，隐藏空状态
-            tokenListEmpty.style.display = 'none';
-            tokenListGrid.style.display = 'grid';
 
-            // 清空列表
-            tokenListGrid.innerHTML = '';
+                // 如果有搜索词，过滤合约
+                let filteredContracts = contractsArray;
+                if (searchTerm) {
+                    const term = searchTerm.toLowerCase();
+                    filteredContracts = contractsArray.filter(contract =>
+                        contract.symbol.toLowerCase().includes(term) ||
+                        contract.name.toLowerCase().includes(term) ||
+                        contract.address.toLowerCase().includes(term)
+                    );
+                }
 
-            // 显示代币合约
-            filteredContracts.forEach(contract => {
-                const contractItem = document.createElement('div');
-                contractItem.className = 'token-list-item';
+                // 如果没有代币合约，显示空状态
+                if (filteredContracts.length === 0) {
+                    tokenListEmpty.style.display = 'block';
+                    tokenListGrid.style.display = 'none';
 
-                // 检查是否由当前地址创建
-                const isCreatedByCurrentAddress = contract.createdByCurrentAddress;
-
-                // 检查是否在当前筛选的交易中
-                const isInFilteredTransactions = currentContractType === 'filtered';
-
-                contractItem.innerHTML = `
-                    <div class="token-list-symbol">${contract.symbol}</div>
-                    <div class="token-list-name">${contract.name}</div>
-                    <div class="token-list-address-container">
-                        <div class="token-list-address-label">合约地址:</div>
-                        <div class="token-list-address">${contract.address}</div>
-                        <button class="token-action-btn copy-address-btn" data-address="${contract.address}" title="复制合约地址">复制</button>
-                    </div>
-                    <div class="token-list-creator-container">
-                        <div class="token-list-address-label">创建者:</div>
-                        ${isCreatedByCurrentAddress ?
-                            `<div class="token-list-creator">
-                                <span class="creator-badge">当前地址</span>
-                                <span class="creator-address">${contract.creator}</span>
-                            </div>` :
-                            contract.creator ?
-                            `<div class="token-list-creator">
-                                <span class="creator-address">${contract.creator}</span>
-                                <button class="token-action-btn copy-creator-btn" data-address="${contract.creator}" title="复制创建者地址">复制</button>
-                            </div>` :
-                            `<div class="token-list-creator">
-                                <span class="creator-unknown">查询详情后可显示</span>
-                                <button class="token-action-btn query-details-btn" data-address="${contract.address}" title="查询合约详情">查询</button>
-                            </div>`
+                    // 根据不同情况显示不同的消息
+                    if (searchTerm) {
+                        tokenListEmpty.innerHTML = `<p>没有找到匹配"${searchTerm}"的代币合约。</p>`;
+                    } else if (currentContractType === 'created') {
+                        if (contractsArray.length === 0) {
+                            tokenListEmpty.innerHTML = `<p>未发现由当前地址创建的合约。</p>
+                            <p>如果您确信该地址创建过合约，请尝试在"合约信息"标签页中查询具体的合约地址。</p>`;
+                        } else {
+                            tokenListEmpty.innerHTML = `<p>没有找到符合条件的合约。</p>`;
                         }
-                    </div>
-                    ${isInFilteredTransactions ?
-                        `<div class="token-list-related-tx">
-                            <div class="related-tx-label">关联交易:</div>
-                            <div class="related-tx-list">
-                                ${getRelatedTransactionsHTML(contract.address)}
-                            </div>
-                        </div>` : ''
-                    }
-                    <div class="token-list-actions">
-                        <button class="token-action-btn view-details-btn" data-address="${contract.address}">查看合约详情</button>
-                    </div>
-                `;
-
-                tokenListGrid.appendChild(contractItem);
-            });
-
-            // 添加查看详情按钮事件
-            document.querySelectorAll('.view-details-btn, .query-details-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const contractAddress = btn.getAttribute('data-address');
-                    if (contractAddress) {
-                        // 切换到合约信息标签页
-                        tabBtns.forEach(tabBtn => {
-                            if (tabBtn.getAttribute('data-tab') === 'contracts') {
-                                tabBtn.click();
+                    } else if (currentContractType === 'filtered') {
+                        if (contractsArray.length === 0) {
+                            if (selectedTokens.length > 0) {
+                                tokenListEmpty.innerHTML = `<p>当前筛选的交易中未包含任何合约。</p>
+                                <p>当前筛选: ${selectedTokens.join(', ')}</p>`;
+                            } else {
+                                tokenListEmpty.innerHTML = `<p>请先在"转账记录"标签页筛选交易，然后查看相关的合约。</p>`;
                             }
-                        });
-
-                        // 填充合约地址并触发查询
-                        contractAddressInput.value = contractAddress;
-                        searchContractBtn.click();
-                    }
-                });
-            });
-
-            // 添加"查询详情后可显示"文本点击事件
-            document.querySelectorAll('.creator-unknown').forEach(span => {
-                span.addEventListener('click', () => {
-                    // 找到最近的合约项
-                    const contractItem = span.closest('.token-list-item');
-                    if (contractItem) {
-                        // 找到查询按钮并触发点击
-                        const queryBtn = contractItem.querySelector('.query-details-btn');
-                        if (queryBtn) {
-                            queryBtn.click();
+                        } else {
+                            tokenListEmpty.innerHTML = `<p>没有找到符合条件的合约。</p>`;
                         }
+                    } else if (contractsArray.length === 0) {
+                        tokenListEmpty.innerHTML = `<p>暂无代币合约。请先在"转账记录"标签页查询钱包地址，系统会自动识别相关的代币合约。</p>`;
                     }
+                    return;
+                }
+
+                // 有合约，隐藏空状态
+                tokenListEmpty.style.display = 'none';
+                tokenListGrid.style.display = 'grid';
+
+                // 清空列表
+                tokenListGrid.innerHTML = '';
+
+                // 显示代币合约
+                filteredContracts.forEach(contract => {
+                    const contractItem = document.createElement('div');
+                    contractItem.className = 'token-list-item';
+
+                    // 检查是否由当前地址创建
+                    const isCreatedByCurrentAddress = contract.createdByCurrentAddress;
+
+                    // 检查是否在当前筛选的交易中
+                    const isInFilteredTransactions = currentContractType === 'filtered';
+
+                    contractItem.innerHTML = `
+                        <div class="token-list-symbol">${contract.symbol}</div>
+                        <div class="token-list-name">${contract.name}</div>
+                        <div class="token-list-address-container">
+                            <div class="token-list-address-label">合约地址:</div>
+                            <div class="token-list-address">${contract.address}</div>
+                            <button class="token-action-btn copy-address-btn" data-address="${contract.address}" title="复制合约地址">复制</button>
+                        </div>
+                        <div class="token-list-creator-container">
+                            <div class="token-list-address-label">创建者:</div>
+                            ${isCreatedByCurrentAddress ?
+                                `<div class="token-list-creator">
+                                    <span class="creator-badge">当前地址</span>
+                                    <span class="creator-address">${contract.creator}</span>
+                                </div>` :
+                                contract.creator ?
+                                `<div class="token-list-creator">
+                                    <span class="creator-address">${contract.creator}</span>
+                                    <button class="token-action-btn copy-creator-btn" data-address="${contract.creator}" title="复制创建者地址">复制</button>
+                                </div>` :
+                                `<div class="token-list-creator">
+                                    <span class="creator-unknown">查询详情后可显示</span>
+                                    <button class="token-action-btn query-details-btn" data-address="${contract.address}" title="查询合约详情">查询</button>
+                                </div>`
+                            }
+                        </div>
+                        ${isInFilteredTransactions ?
+                            `<div class="token-list-related-tx">
+                                <div class="related-tx-label">关联交易:</div>
+                                <div class="related-tx-list">
+                                    ${getRelatedTransactionsHTML(contract.address)}
+                                </div>
+                            </div>` : ''
+                        }
+                        <div class="token-list-actions">
+                            <button class="token-action-btn view-details-btn" data-address="${contract.address}">查看合约详情</button>
+                        </div>
+                    `;
+
+                    tokenListGrid.appendChild(contractItem);
                 });
-            });
 
-            // 添加复制地址按钮事件（合约地址和创建者地址）
-            document.querySelectorAll('.copy-address-btn, .copy-creator-btn').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const address = btn.getAttribute('data-address');
-                    if (address) {
-                        // 复制到剪贴板
-                        navigator.clipboard.writeText(address)
-                            .then(() => {
-                                // 临时改变按钮文字
-                                const originalText = btn.textContent;
-                                btn.textContent = '已复制!';
-                                btn.style.backgroundColor = '#d4edda';
-                                btn.style.color = '#155724';
-
-                                // 2秒后恢复
-                                setTimeout(() => {
-                                    btn.textContent = originalText;
-                                    btn.style.backgroundColor = '';
-                                    btn.style.color = '';
-                                }, 2000);
-                            })
-                            .catch(err => {
-                                console.error('复制失败:', err);
-                                alert('复制地址失败，请手动复制');
+                // 添加查看详情按钮事件
+                document.querySelectorAll('.view-details-btn, .query-details-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const contractAddress = btn.getAttribute('data-address');
+                        if (contractAddress) {
+                            // 切换到合约信息标签页
+                            tabBtns.forEach(tabBtn => {
+                                if (tabBtn.getAttribute('data-tab') === 'contracts') {
+                                    tabBtn.click();
+                                }
                             });
-                    }
+
+                            // 填充合约地址并触发查询
+                            contractAddressInput.value = contractAddress;
+                            searchContractBtn.click();
+                        }
+                    });
                 });
-            });
+
+                // 添加"查询详情后可显示"文本点击事件
+                document.querySelectorAll('.creator-unknown').forEach(span => {
+                    span.addEventListener('click', () => {
+                        // 找到最近的合约项
+                        const contractItem = span.closest('.token-list-item');
+                        if (contractItem) {
+                            // 找到查询按钮并触发点击
+                            const queryBtn = contractItem.querySelector('.query-details-btn');
+                            if (queryBtn) {
+                                queryBtn.click();
+                            }
+                        }
+                    });
+                });
+
+                // 添加复制地址按钮事件（合约地址和创建者地址）
+                document.querySelectorAll('.copy-address-btn, .copy-creator-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const address = btn.getAttribute('data-address');
+                        if (address) {
+                            // 复制到剪贴板
+                            navigator.clipboard.writeText(address)
+                                .then(() => {
+                                    // 临时改变按钮文字
+                                    const originalText = btn.textContent;
+                                    btn.textContent = '已复制!';
+                                    btn.style.backgroundColor = '#d4edda';
+                                    btn.style.color = '#155724';
+
+                                    // 2秒后恢复
+                                    setTimeout(() => {
+                                        btn.textContent = originalText;
+                                        btn.style.backgroundColor = '';
+                                        btn.style.color = '';
+                                    }, 2000);
+                                })
+                                .catch(err => {
+                                    console.error('复制失败:', err);
+                                    alert('复制地址失败，请手动复制');
+                                });
+                        }
+                    });
+                });
+
+            } catch (error) {
+                console.error('更新合约列表失败:', error);
+                tokenListEmpty.style.display = 'block';
+                tokenListEmpty.innerHTML = `<p>加载合约列表失败: ${error.message}</p>`;
+                tokenListGrid.style.display = 'none';
+            }
         }
 
         // 交易类型选项卡事件
@@ -1214,7 +1297,7 @@ function initApp() {
 
         // 合约类型选项卡事件
         contractTypeBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const contractType = btn.getAttribute('data-type');
 
                 // 更新活动按钮
@@ -1238,8 +1321,50 @@ function initApp() {
                     return;
                 }
 
-                // 更新合约列表
-                updateTokenListPage(tokenSearchInput.value.trim());
+                // 如果选择了"我创建的合约"，先查询所有合约创建者信息
+                if (contractType === 'created') {
+                    try {
+                        // 显示加载中状态
+                        tokenListEmpty.style.display = 'block';
+                        tokenListEmpty.innerHTML = '<p>正在查询合约创建者信息，请稍候...</p>';
+                        tokenListGrid.style.display = 'none';
+
+                        // 获取当前查询进度
+                        const progress = bscService.getContractCreatorsQueryProgress();
+
+                        // 如果已经在查询中，显示进度
+                        if (progress.isQuerying) {
+                            console.log('合约创建者信息查询已在进行中，显示进度');
+                            showContractCreatorsQueryProgress();
+
+                            // 启动进度更新定时器
+                            startProgressUpdateTimer();
+                        } else {
+                            // 否则，开始新的查询
+                            console.log('开始查询所有合约创建者信息...');
+
+                            // 启动进度更新定时器
+                            startProgressUpdateTimer();
+
+                            // 查询所有合约创建者信息
+                            await bscService.queryAllContractCreators();
+
+                            // 停止进度更新定时器
+                            stopProgressUpdateTimer();
+
+                            console.log('所有合约创建者信息查询完成');
+                        }
+                    } catch (error) {
+                        console.error('查询合约创建者信息失败:', error);
+                        // 停止进度更新定时器
+                        stopProgressUpdateTimer();
+                    }
+                }
+
+                // 更新合约列表（异步调用）
+                updateTokenListPage(tokenSearchInput.value.trim()).catch(error => {
+                    console.error('更新合约列表失败:', error);
+                });
             });
         });
 
@@ -1260,26 +1385,138 @@ function initApp() {
             // 清空搜索框
             tokenSearchInput.value = '';
 
-            // 更新合约列表页面
-            updateTokenListPage();
+            // 更新合约列表页面（异步调用）
+            updateTokenListPage().catch(error => {
+                console.error('更新合约列表失败:', error);
+            });
         });
 
         // 搜索按钮
         tokenSearchBtn.addEventListener('click', () => {
             const searchTerm = tokenSearchInput.value.trim();
-            updateTokenListPage(searchTerm);
+            updateTokenListPage(searchTerm).catch(error => {
+                console.error('更新合约列表失败:', error);
+            });
         });
 
         // 搜索输入框回车事件
         tokenSearchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 const searchTerm = tokenSearchInput.value.trim();
-                updateTokenListPage(searchTerm);
+                updateTokenListPage(searchTerm).catch(error => {
+                    console.error('更新合约列表失败:', error);
+                });
             }
         });
 
-        // 初始化合约列表页面
-        updateTokenListPage();
+        // 初始化合约列表页面（异步调用）
+        updateTokenListPage().catch(error => {
+            console.error('初始化合约列表失败:', error);
+        });
+
+        // 进度更新定时器
+        let progressUpdateTimer = null;
+
+        // 启动进度更新定时器
+        function startProgressUpdateTimer() {
+            // 如果已经有定时器，先停止
+            stopProgressUpdateTimer();
+
+            // 启动新的定时器，每秒更新一次进度
+            progressUpdateTimer = setInterval(() => {
+                showContractCreatorsQueryProgress();
+            }, 1000);
+        }
+
+        // 停止进度更新定时器
+        function stopProgressUpdateTimer() {
+            if (progressUpdateTimer) {
+                clearInterval(progressUpdateTimer);
+                progressUpdateTimer = null;
+            }
+        }
+
+        // 开始查询合约创建者信息
+        function startContractCreatorsQuery() {
+            // 获取当前查询进度
+            const progress = bscService.getContractCreatorsQueryProgress();
+
+            // 如果已经在查询中，不重复查询
+            if (progress.isQuerying) {
+                console.log('合约创建者信息查询已在进行中，不重复查询');
+                return;
+            }
+
+            console.log('自动开始查询合约创建者信息...');
+
+            // 查询所有合约创建者信息（不等待结果，在后台进行）
+            bscService.queryAllContractCreators().then(() => {
+                console.log('所有合约创建者信息查询完成');
+
+                // 如果当前在"我创建的合约"标签页，更新列表
+                if (currentContractType === 'created') {
+                    updateTokenListPage().catch(error => {
+                        console.error('更新合约列表失败:', error);
+                    });
+                }
+            }).catch(error => {
+                console.error('查询合约创建者信息失败:', error);
+            });
+        }
+
+        // 显示合约创建者查询进度
+        function showContractCreatorsQueryProgress() {
+            const progress = bscService.getContractCreatorsQueryProgress();
+
+            if (progress.isQuerying) {
+                // 计算进度百分比
+                const percent = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
+
+                // 显示进度信息
+                tokenListEmpty.innerHTML = `
+                    <p>正在查询合约创建者信息，请稍候...</p>
+                    <div class="progress-container">
+                        <div class="progress-bar" style="width: ${percent}%"></div>
+                    </div>
+                    <p>进度: ${progress.completed} / ${progress.total} (${percent}%)</p>
+                    <p>已知创建者: ${progress.withCreator}</p>
+                    <p class="progress-note">您可以切换到其他标签页，查询会在后台继续进行</p>
+                `;
+
+                // 添加样式
+                if (!document.getElementById('progress-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'progress-style';
+                    style.textContent = `
+                        .progress-container {
+                            width: 100%;
+                            height: 20px;
+                            background-color: #f0f0f0;
+                            border-radius: 10px;
+                            margin: 10px 0;
+                            overflow: hidden;
+                        }
+                        .progress-bar {
+                            height: 100%;
+                            background-color: #4CAF50;
+                            width: 0%;
+                            transition: width 0.3s ease;
+                        }
+                        .progress-note {
+                            font-size: 0.9em;
+                            color: #666;
+                            margin-top: 15px;
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+            } else {
+                // 如果查询已完成，显示结果
+                updateTokenListPage().catch(error => {
+                    console.error('更新合约列表失败:', error);
+                });
+            }
+        }
 
         console.log('应用初始化完成');
 
