@@ -1,0 +1,912 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f4f7fa;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #3498db;
+}
+
+h2 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+}
+
+.tabs {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #ddd;
+}
+
+.tab-btn {
+    padding: 10px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    color: #777;
+    transition: all 0.3s ease;
+}
+
+.tab-btn.active {
+    color: #3498db;
+    border-bottom: 2px solid #3498db;
+}
+
+.tab-content {
+    display: none;
+    padding: 20px;
+    background-color: #fff;
+    border-radius: 5px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.input-group {
+    margin-bottom: 15px;
+}
+
+label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.btn {
+    padding: 10px 20px;
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s ease;
+}
+
+.btn:hover {
+    background-color: #2980b9;
+}
+
+.loading {
+    display: none;
+    text-align: center;
+    margin: 20px 0;
+    font-style: italic;
+    color: #777;
+}
+
+.results {
+    margin-top: 30px;
+    display: none;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #ddd;
+}
+
+th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+
+tr:hover {
+    background-color: #f5f5f5;
+}
+
+.contract-info {
+    background-color: #f9f9f9;
+    padding: 15px;
+    border-radius: 4px;
+    line-height: 1.8;
+}
+
+.error {
+    color: #e74c3c;
+    margin-top: 10px;
+    font-weight: bold;
+}
+
+.tx-link, .address-link {
+    color: #3498db;
+    text-decoration: none;
+}
+
+.tx-link:hover, .address-link:hover {
+    text-decoration: underline;
+}
+
+/* 分页样式 */
+.pagination {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.pagination-info {
+    margin-bottom: 10px;
+    color: #666;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.pagination-btn {
+    padding: 5px 10px;
+    background-color: #f2f2f2;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #333;
+}
+
+.pagination-btn:hover {
+    background-color: #e0e0e0;
+}
+
+.pagination-btn:disabled {
+    background-color: #f8f8f8;
+    color: #ccc;
+    cursor: not-allowed;
+}
+
+.page-indicator {
+    margin: 0 10px;
+    color: #666;
+}
+
+/* 交易类型选项卡样式 */
+.tx-type-tabs {
+    display: flex;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #ddd;
+}
+
+.tx-type-btn {
+    padding: 8px 15px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    color: #777;
+    transition: all 0.3s ease;
+    margin-right: 5px;
+}
+
+.tx-type-btn.active {
+    color: #3498db;
+    border-bottom: 2px solid #3498db;
+}
+
+.tx-type-btn:hover {
+    color: #3498db;
+}
+
+/* 币种筛选样式 */
+.token-filter {
+    margin: 15px 0;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border: 1px solid #e9ecef;
+}
+
+.token-filter-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.token-filter-header span {
+    font-weight: bold;
+    color: #495057;
+}
+
+.token-filter-btn {
+    padding: 5px 10px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #495057;
+    transition: all 0.2s ease;
+}
+
+.token-filter-btn.active {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    border-color: #bee5eb;
+    font-weight: bold;
+    box-shadow: 0 0 0 2px rgba(12, 84, 96, 0.25);
+    position: relative;
+}
+
+/* 添加选中标记 */
+.token-filter-btn.active::before {
+    content: "✓";
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 16px;
+    height: 16px;
+    background-color: #0c5460;
+    color: white;
+    border-radius: 50%;
+    font-size: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+.token-filter-btn:hover {
+    background-color: #e9ecef;
+}
+
+.token-filter-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.token-filter-dropdown-btn {
+    padding: 5px 10px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #495057;
+    transition: all 0.2s ease;
+}
+
+.token-filter-dropdown-btn:hover {
+    background-color: #e9ecef;
+}
+
+.token-filter-dropdown-content {
+    display: none;
+    position: absolute;
+    background-color: #fff;
+    min-width: 180px;
+    max-height: 300px;
+    overflow-y: auto;
+    box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+    z-index: 1000;
+    border-radius: 3px;
+    margin-top: 5px;
+    border: 1px solid #dee2e6;
+}
+
+/* 只通过点击后添加show类显示下拉菜单 */
+.token-filter-dropdown-content.show {
+    display: block;
+}
+
+.token-filter-item {
+    padding: 12px 15px;
+    text-decoration: none;
+    display: block;
+    color: #495057;
+    cursor: pointer;
+    font-size: 14px;
+    border-bottom: 1px solid #f1f1f1;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.token-filter-item:last-child {
+    border-bottom: none;
+}
+
+.token-filter-item:hover {
+    background-color: #e2f0fb;
+    color: #0c5460;
+}
+
+.token-filter-item:active {
+    background-color: #d1ecf1;
+}
+
+.custom-token-filter {
+    display: flex;
+    gap: 5px;
+}
+
+.custom-token-filter input {
+    flex: 1;
+    padding: 5px 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    font-size: 13px;
+}
+
+.custom-token-filter button {
+    padding: 5px 10px;
+    background-color: #e2f0fb;
+    border: 1px solid #bee5eb;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #0c5460;
+    transition: all 0.2s ease;
+}
+
+.custom-token-filter button:hover {
+    background-color: #d1ecf1;
+}
+
+/* 交易类型标签 */
+.tx-type-label {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.tx-type-in {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.tx-type-out {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* 代币合约标识 */
+.contract-badge {
+    background-color: #e2f0fb;
+    color: #0c5460;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: bold;
+    cursor: help;
+}
+
+.token-info {
+    color: #6c757d;
+    font-size: 0.9em;
+    cursor: help;
+}
+
+.view-contract-btn {
+    background: none;
+    border: none;
+    color: #3498db;
+    cursor: pointer;
+    font-size: 14px;
+    margin-left: 5px;
+    padding: 0 3px;
+}
+
+.view-contract-btn:hover {
+    color: #2980b9;
+}
+
+/* 代币合约列表 */
+.token-contracts {
+    margin: 15px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    border: 1px solid #e9ecef;
+}
+
+.token-contracts h4 {
+    margin-top: 0;
+    margin-bottom: 5px;
+    color: #495057;
+}
+
+.token-contracts-note {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #6c757d;
+    font-size: 0.9em;
+    font-style: italic;
+}
+
+/* 代币合约提示 */
+.contract-hint {
+    margin: 15px 0;
+    padding: 10px 15px;
+    background-color: #e2f0fb;
+    border: 1px solid #bee5eb;
+    border-radius: 4px;
+    color: #0c5460;
+}
+
+.contract-hint p {
+    margin: 0;
+    font-size: 14px;
+}
+
+.goto-contract-list {
+    color: #0c5460;
+    font-weight: bold;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.goto-contract-list:hover {
+    color: #0a3d44;
+}
+
+.token-contracts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.token-contract-item {
+    padding: 10px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.token-contract-item:hover {
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.token-symbol {
+    font-weight: bold;
+    color: #0c5460;
+}
+
+.token-name {
+    font-size: 0.9em;
+    color: #6c757d;
+    margin-bottom: 5px;
+}
+
+.token-address {
+    font-size: 0.8em;
+    color: #6c757d;
+    word-break: break-all;
+}
+
+.view-token-btn {
+    display: block;
+    margin-top: 8px;
+    padding: 3px 8px;
+    background-color: #e2f0fb;
+    color: #0c5460;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    text-align: center;
+}
+
+.view-token-btn:hover {
+    background-color: #d1ecf1;
+}
+
+/* 合约列表页面样式 */
+.token-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+/* 合约类型选项卡 */
+.contract-type-tabs {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #ddd;
+}
+
+.contract-type-btn {
+    padding: 8px 15px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    color: #777;
+    transition: all 0.3s ease;
+    margin-right: 5px;
+}
+
+.contract-type-btn.active {
+    color: #3498db;
+    border-bottom: 2px solid #3498db;
+}
+
+.contract-type-btn:hover {
+    color: #3498db;
+}
+
+.token-list-header p {
+    margin: 0;
+    color: #666;
+    flex: 1;
+    min-width: 300px;
+    margin-bottom: 10px;
+}
+
+.token-list-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.action-btn {
+    padding: 8px 15px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #495057;
+    transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+    background-color: #e9ecef;
+}
+
+.search-box {
+    display: flex;
+    align-items: center;
+}
+
+.search-box input {
+    padding: 8px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px 0 0 4px;
+    font-size: 14px;
+    width: 200px;
+}
+
+.search-box button {
+    padding: 8px 15px;
+    background-color: #e2f0fb;
+    border: 1px solid #bee5eb;
+    border-left: none;
+    border-radius: 0 4px 4px 0;
+    cursor: pointer;
+    font-size: 14px;
+    color: #0c5460;
+}
+
+.search-box button:hover {
+    background-color: #d1ecf1;
+}
+
+.token-list-container {
+    margin-top: 20px;
+}
+
+.token-list-empty {
+    padding: 30px;
+    text-align: center;
+    background-color: #f8f9fa;
+    border-radius: 5px;
+    color: #6c757d;
+}
+
+.token-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 15px;
+}
+
+.token-list-item {
+    padding: 15px;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: 5px;
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.token-list-item:hover {
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+}
+
+.token-list-symbol {
+    font-size: 18px;
+    font-weight: bold;
+    color: #0c5460;
+    margin-bottom: 5px;
+}
+
+.token-list-name {
+    font-size: 14px;
+    color: #6c757d;
+    margin-bottom: 10px;
+}
+
+.token-list-address-container,
+.token-list-creator-container {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+    background-color: #f8f9fa;
+    padding: 8px;
+    border-radius: 3px;
+}
+
+.token-list-address-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #495057;
+    margin-right: 8px;
+    min-width: 70px;
+}
+
+.token-list-address {
+    font-size: 12px;
+    color: #6c757d;
+    word-break: break-all;
+    flex: 1;
+    margin-right: 8px;
+}
+
+.token-list-creator {
+    font-size: 12px;
+    color: #6c757d;
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.creator-badge {
+    display: inline-block;
+    padding: 3px 6px;
+    background-color: #d4edda;
+    color: #155724;
+    border-radius: 3px;
+    font-weight: bold;
+    margin-right: 8px;
+}
+
+.creator-address {
+    word-break: break-all;
+    margin-right: 8px;
+}
+
+.creator-unknown {
+    color: #0275d8;
+    font-style: italic;
+    cursor: pointer;
+    text-decoration: underline dotted;
+}
+
+.token-list-filtered-badge {
+    margin-bottom: 10px;
+}
+
+.filtered-badge {
+    display: inline-block;
+    padding: 3px 6px;
+    background-color: #cce5ff;
+    color: #004085;
+    border-radius: 3px;
+    font-weight: bold;
+    margin-right: 8px;
+}
+
+/* 关联交易样式 */
+.token-list-related-tx {
+    margin-bottom: 15px;
+    background-color: #f8f9fa;
+    padding: 8px;
+    border-radius: 3px;
+}
+
+.related-tx-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #495057;
+    margin-bottom: 5px;
+}
+
+.related-tx-list {
+    font-size: 12px;
+}
+
+.related-tx-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 0;
+    border-bottom: 1px dashed #dee2e6;
+}
+
+.related-tx-item:last-child {
+    border-bottom: none;
+}
+
+.related-tx-hash {
+    color: #0275d8;
+    text-decoration: none;
+}
+
+.related-tx-hash:hover {
+    text-decoration: underline;
+}
+
+.related-tx-time {
+    color: #6c757d;
+    font-size: 11px;
+}
+
+.no-related-tx {
+    color: #6c757d;
+    font-style: italic;
+}
+
+.more-tx {
+    margin-top: 5px;
+    color: #6c757d;
+    font-style: italic;
+    text-align: right;
+    font-size: 11px;
+}
+
+.token-list-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: auto;
+}
+
+.token-action-btn {
+    flex: 1;
+    padding: 8px;
+    text-align: center;
+    border-radius: 4px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.view-details-btn {
+    background-color: #e2f0fb;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
+
+.view-details-btn:hover {
+    background-color: #d1ecf1;
+}
+
+.copy-address-btn {
+    background-color: #f8f9fa;
+    color: #495057;
+    border: 1px solid #dee2e6;
+}
+
+.copy-address-btn:hover {
+    background-color: #e9ecef;
+}
+
+.query-details-btn {
+    background-color: #e2f0fb;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+    font-weight: bold;
+}
+
+.query-details-btn:hover {
+    background-color: #d1ecf1;
+}
+
+/* 代币符号标签 */
+.token-symbol-label {
+    display: inline-block;
+    padding: 2px 6px;
+    background-color: #f8f9fa;
+    color: #495057;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: bold;
+    margin-left: 5px;
+}
+
+.token-symbol-label.highlighted {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeeba;
+}
+
+/* 高亮行 */
+.highlighted-row {
+    background-color: #fffbf0 !important;
+}
+
+/* 代币筛选提示 */
+.token-filter-active {
+    margin-bottom: 15px;
+    padding: 8px 12px;
+    background-color: #fff3cd;
+    border: 1px solid #ffeeba;
+    border-radius: 3px;
+    color: #856404;
+    font-size: 14px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.filter-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 10px;
+}
+
+.clear-filter-btn {
+    padding: 4px 8px;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 3px;
+    color: #495057;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: normal;
+    transition: all 0.2s ease;
+}
+
+.clear-filter-btn:hover {
+    background-color: #e9ecef;
+    color: #212529;
+}

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BSC链查询工具</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- 引入ethers.js库 -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js" type="text/javascript"></script>
+    <!-- 添加错误处理 -->
+    <script>
+        window.addEventListener('error', function(event) {
+            console.error('全局错误:', event.message, event.filename, event.lineno);
+            alert('页面发生错误: ' + event.message);
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>BSC链查询工具</h1>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="transactions">转账记录</button>
+            <button class="tab-btn" data-tab="token-list">合约列表</button>
+            <button class="tab-btn" data-tab="contracts">合约信息</button>
+        </div>
+
+        <div class="tab-content active" id="transactions">
+            <h2>查询转账记录</h2>
+            <div class="input-group">
+                <label for="address">钱包地址:</label>
+                <input type="text" id="address" placeholder="输入BSC钱包地址">
+            </div>
+            <button id="searchTx" class="btn">查询</button>
+
+            <div class="loading" id="txLoading">加载中...</div>
+
+            <div class="results" id="txResults">
+                <h3>转账记录</h3>
+
+                <!-- 交易类型选项卡 -->
+                <div class="tx-type-tabs">
+                    <button class="tx-type-btn active" data-type="all">全部交易</button>
+                    <button class="tx-type-btn" data-type="in">转入</button>
+                    <button class="tx-type-btn" data-type="out">转出</button>
+                </div>
+
+                <!-- 币种筛选 -->
+                <div class="token-filter">
+                    <div class="token-filter-header">
+                        <span>币种筛选:</span>
+                        <button class="token-filter-btn active" data-token="all">全部</button>
+                        <button class="token-filter-btn" data-token="BNB">BNB</button>
+                        <div class="token-filter-dropdown">
+                            <button class="token-filter-dropdown-btn">更多币种 ▼</button>
+                            <div class="token-filter-dropdown-content" id="tokenFilterDropdown">
+                                <!-- 这里将动态填充代币列表 -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="custom-token-filter">
+                        <input type="text" id="customTokenInput" placeholder="输入代币符号...">
+                        <button id="applyCustomToken">应用</button>
+                    </div>
+                </div>
+
+                <!-- 代币合约提示 -->
+                <div class="contract-hint" id="contractHint" style="display: none;">
+                    <p>发现代币合约！请前往<a href="#" class="goto-contract-list">合约列表</a>页面查看详情。</p>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>交易哈希</th>
+                            <th>区块</th>
+                            <th>时间</th>
+                            <th>发送方</th>
+                            <th>接收方</th>
+                            <th>数量</th>
+                            <th>类型</th>
+                        </tr>
+                    </thead>
+                    <tbody id="txTableBody">
+                        <!-- 这里将动态填充转账记录 -->
+                    </tbody>
+                </table>
+
+                <!-- 分页控件 -->
+                <div class="pagination" id="txPagination" style="display: none;">
+                    <div class="pagination-info">
+                        显示 <span id="pageStart">1</span> - <span id="pageEnd">50</span> 条，共 <span id="totalRecords">0</span> 条记录
+                    </div>
+                    <div class="pagination-controls">
+                        <button id="firstPage" class="pagination-btn">&laquo; 首页</button>
+                        <button id="prevPage" class="pagination-btn">&lsaquo; 上一页</button>
+                        <span class="page-indicator">第 <span id="currentPage">1</span> / <span id="totalPages">1</span> 页</span>
+                        <button id="nextPage" class="pagination-btn">下一页 &rsaquo;</button>
+                        <button id="lastPage" class="pagination-btn">末页 &raquo;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="token-list">
+            <h2>代币合约列表</h2>
+            <div class="token-list-header">
+                <p>此页面显示在查询转账记录时发现的所有代币合约。</p>
+                <div class="token-list-actions">
+                    <button id="clearTokenList" class="action-btn">清空列表</button>
+                    <div class="search-box">
+                        <input type="text" id="tokenSearchInput" placeholder="搜索代币...">
+                        <button id="tokenSearchBtn">搜索</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 合约类型选项卡 -->
+            <div class="contract-type-tabs">
+                <button class="contract-type-btn active" data-type="all">所有合约</button>
+                <button class="contract-type-btn" data-type="created">我创建的合约</button>
+                <button class="contract-type-btn" data-type="filtered">交易相关合约</button>
+            </div>
+
+            <div class="token-list-container">
+                <div class="token-list-empty" id="tokenListEmpty">
+                    <p>暂无代币合约。请先在"转账记录"标签页查询钱包地址，系统会自动识别相关的代币合约。</p>
+                </div>
+
+                <div class="token-list-grid" id="tokenListGrid">
+                    <!-- 这里将动态填充代币合约列表 -->
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="contracts">
+            <h2>查询合约信息</h2>
+            <div class="input-group">
+                <label for="contractAddress">合约地址:</label>
+                <input type="text" id="contractAddress" placeholder="输入BSC合约地址">
+            </div>
+            <button id="searchContract" class="btn">查询</button>
+
+            <div class="loading" id="contractLoading">加载中...</div>
+
+            <div class="results" id="contractResults">
+                <h3>合约信息</h3>
+                <div class="contract-info" id="contractInfo">
+                    <!-- 这里将动态填充合约信息 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="bscService.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
