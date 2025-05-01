@@ -18,10 +18,10 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'", "http:"],
       scriptSrc: ["'self'", "'unsafe-inline'", "http:"],
-      styleSrc: ["'self'", "'unsafe-inline'", "http:", "https:"],
+      styleSrc: ["'self'", "'unsafe-inline'", "http:"],
       imgSrc: ["'self'", "data:", "http:"],
       connectSrc: ["'self'", "http:"],
-      fontSrc: ["'self'", "http:", "https:", "data:"],
+      fontSrc: ["'self'", "http:", "data:"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'", "http:"],
       frameSrc: ["'self'", "http:"],
