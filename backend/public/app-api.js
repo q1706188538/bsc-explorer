@@ -1,7 +1,8 @@
 // 前端 API 服务
 class ApiService {
     constructor() {
-        this.API_BASE_URL = 'http://localhost:3000/api';
+        // 使用相对路径，避免硬编码 URL
+        this.API_BASE_URL = '/api';
         this.transactionsCache = {};
         this.tokenContracts = {};
         this.createdContracts = {};

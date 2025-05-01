@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BSC链查询工具</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- 引入ethers.js库 -->
-    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js" type="text/javascript"></script>
+    <!-- 引入本地ethers.js库 -->
+    <script src="ethers.min.js" type="text/javascript"></script>
     <!-- 添加错误处理 -->
     <script>
         window.addEventListener('error', function(event) {
@@ -179,7 +179,7 @@
 
     </div>
 
-    <script src="/ethers.min.js"></script>
+    <!-- 已在头部引入ethers.min.js -->
     <script src="app-api.js"></script>
     <script src="js/moralis-integration.js"></script>
     <script src="app.js"></script>
