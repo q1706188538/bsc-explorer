@@ -16,15 +16,15 @@ const port = config.port;
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'", "https:"],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'", "https:", "data:"],
+      defaultSrc: ["'self'", "http:"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "http:"],
+      styleSrc: ["'self'", "'unsafe-inline'", "http:", "https:"],
+      imgSrc: ["'self'", "data:", "http:"],
+      connectSrc: ["'self'", "http:"],
+      fontSrc: ["'self'", "http:", "https:", "data:"],
       objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'self'"],
+      mediaSrc: ["'self'", "http:"],
+      frameSrc: ["'self'", "http:"],
     },
   },
 }));
@@ -61,7 +61,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // 设置为false，只使用HTTP
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000 // 24小时
   }
