@@ -92,22 +92,16 @@ function initApp() {
 
         // 分页元素
         const txPagination = document.getElementById('txPagination');
-        const pageStart = document.getElementById('pageStart');
-        const pageEnd = document.getElementById('pageEnd');
-        const totalRecords = document.getElementById('totalRecords');
-        const currentPage = document.getElementById('currentPage');
-        const totalPages = document.getElementById('totalPages');
-        const firstPageBtn = document.getElementById('firstPage');
-        const prevPageBtn = document.getElementById('prevPage');
-        const nextPageBtn = document.getElementById('nextPage');
-        const lastPageBtn = document.getElementById('lastPage');
 
-        // 当前查询的地址、页码、交易类型和币种
+        // 当前查询的地址、交易类型和币种
         let currentAddress = '';
-        let currentPageNum = 1;
         let currentTxType = 'all'; // 'all', 'in', 'out'
         let selectedTokens = []; // 存储多个选中的币种
         const pageSize = 5000; // 增加到5000条，接近BSCScan API的最大限制
+
+        // 设置默认页面大小和页码
+        window.currentPageSize = 10;
+        window.currentPageNum = 1;
 
         // 存储交易中出现的所有代币符号
         let tokenSymbols = new Set();
@@ -142,7 +136,8 @@ function initApp() {
             // 清空表格
             txTableBody.innerHTML = '';
 
-            const { transactions, pagination } = result;
+            // 获取交易记录
+            const { transactions } = result;
 
             // 收集所有代币符号
             tokenSymbols.clear(); // 清空之前的代币符号
@@ -173,6 +168,35 @@ function initApp() {
                 });
             }
 
+            // 保存当前交易记录到全局变量，供分页功能使用
+            window.currentTransactions = filteredTransactions;
+            window.selectedTokens = selectedTokens;
+            window.currentPageNum = 1;
+
+            // 获取页面大小
+            const pageSizeSelector = document.getElementById('pageSizeSelector');
+            window.currentPageSize = pageSizeSelector ? parseInt(pageSizeSelector.value) || 10 : 10;
+
+            // 确保分页按钮事件处理函数已初始化
+            if (typeof initPaginationHandlers === 'function') {
+                initPaginationHandlers();
+            }
+
+            // 使用分页功能显示交易记录
+            // 确保所有必要的 DOM 元素都已经加载
+            setTimeout(() => {
+                if (typeof window.displayPaginatedTransactions === 'function') {
+                    try {
+                        console.log('调用 displayPaginatedTransactions 函数');
+                        window.displayPaginatedTransactions();
+                    } catch (error) {
+                        console.error('调用 displayPaginatedTransactions 函数失败:', error);
+                    }
+                } else {
+                    console.error('displayPaginatedTransactions 函数不可用');
+                }
+            }, 500); // 增加延迟时间，确保 DOM 元素已经加载
+
             // 清空当前筛选交易中包含的合约
             filteredTransactionContracts = {};
 
@@ -196,7 +220,7 @@ function initApp() {
                         }
                     } else if (isTokenTxContract || hasContractIndicators) {
                         // 如果是代币交易中的合约地址或有合约调用指标，添加为未知合约
-                        console.log(`将地址 ${tx.from} 识别为可能的合约（发送方）`);
+                        //console.log(`将地址 ${tx.from} 识别为可能的合约（发送方）`);
 
                         filteredTransactionContracts[tx.from.toLowerCase()] = {
                             address: tx.from,
@@ -236,7 +260,7 @@ function initApp() {
                         }
                     } else if (isTokenTxContract || hasContractIndicators) {
                         // 如果是代币交易中的合约地址或有合约调用指标，添加为未知合约
-                        console.log(`将地址 ${tx.to} 识别为可能的合约（接收方）`);
+                        //console.log(`将地址 ${tx.to} 识别为可能的合约（接收方）`);
 
                         filteredTransactionContracts[tx.to.toLowerCase()] = {
                             address: tx.to,
@@ -275,7 +299,7 @@ function initApp() {
                             tokenSymbol = 'UNKNOWN';
                         }
 
-                        console.log(`添加代币合约: ${tx.contractAddress}, 名称: ${tokenName}, 符号: ${tokenSymbol}`);
+                        //console.log(`添加代币合约: ${tx.contractAddress}, 名称: ${tokenName}, 符号: ${tokenSymbol}`);
 
                         filteredTransactionContracts[tx.contractAddress.toLowerCase()] = {
                             address: tx.contractAddress,
@@ -307,8 +331,8 @@ function initApp() {
             });
 
             // 打印当前的代币合约列表，用于调试
-            console.log(`当前有 ${Object.keys(bscService.tokenContracts).length} 个代币合约`);
-            console.log(`当前筛选的交易中包含 ${Object.keys(filteredTransactionContracts).length} 个合约`);
+            //console.log(`当前有 ${Object.keys(bscService.tokenContracts).length} 个代币合约`);
+            //console.log(`当前筛选的交易中包含 ${Object.keys(filteredTransactionContracts).length} 个合约`);
 
             // 更新所有代币合约的名称和符号
             if (typeof bscService.updateAllTokenContractNames === 'function') {
@@ -316,121 +340,30 @@ function initApp() {
             }
 
             // 如果没有交易记录
-            if (filteredTransactions.length === 0) {
+            if (!filteredTransactions || filteredTransactions.length === 0) {
                 txTableBody.innerHTML = `<tr><td colspan="7">没有找到${currentTxType === 'in' ? '转入' : currentTxType === 'out' ? '转出' : ''}交易记录</td></tr>`;
                 txPagination.style.display = 'none';
+
+                // 保存空数组到全局变量，确保分页功能能正确处理
+                window.currentTransactions = [];
+
+                // 使用分页功能显示交易记录（会处理空数据情况）
+                if (typeof window.displayPaginatedTransactions === 'function') {
+                    window.displayPaginatedTransactions();
+                }
+
                 return;
             }
 
-            // 显示交易记录
-            filteredTransactions.forEach(tx => {
-                const row = document.createElement('tr');
+            // 不再直接显示交易记录，而是通过分页功能显示
+            // 所有交易记录已保存到 window.currentTransactions 中
+            // displayPaginatedTransactions 函数将负责显示当前页的交易记录
 
-                // 根据交易方向设置样式
-                const directionLabel = tx.direction === 'in' ?
-                    '<span class="tx-type-label tx-type-in">转入</span>' :
-                    '<span class="tx-type-label tx-type-out">转出</span>';
+            // 不再直接更新分页信息，而是通过 displayPaginatedTransactions 函数更新
+            // 所有分页信息的更新都由 displayPaginatedTransactions 函数负责
 
-                // 检查发送方和接收方是否是代币合约
-                const isFromContract = bscService.isTokenContract(tx.from);
-                const isToContract = bscService.isTokenContract(tx.to);
-
-                // 为代币合约地址添加标识
-                const fromLabel = isFromContract ?
-                    `<span class="contract-badge" title="${tx.tokenName || '代币合约'}">${tx.from.substring(0, 8)}...</span>` :
-                    `${tx.from.substring(0, 8)}...`;
-
-                const toLabel = isToContract ?
-                    `<span class="contract-badge" title="${tx.tokenName || '代币合约'}">${tx.to.substring(0, 8)}...</span>` :
-                    `${tx.to.substring(0, 8)}...`;
-
-                // 如果是代币交易，添加代币信息
-                let valueDisplay = tx.value;
-                let tokenSymbol = 'BNB'; // 默认为BNB
-
-                // 从交易值中提取代币符号
-                const valueMatch = tx.value.match(/([0-9.]+)\s+([A-Za-z0-9]+)$/);
-                if (valueMatch && valueMatch[2]) {
-                    tokenSymbol = valueMatch[2];
-                }
-
-                if (tx.type === 'Token' && tx.contractAddress) {
-                    const tokenInfo = bscService.getTokenContractInfo(tx.contractAddress);
-                    if (tokenInfo) {
-                        valueDisplay = `${tx.value} <span class="token-info" title="${tokenInfo.name}">(${tokenInfo.symbol})</span>`;
-                    }
-                }
-
-                // 检查是否是当前筛选的币种（支持多选）
-                const isHighlighted = selectedTokens.length > 0 && selectedTokens.includes(tokenSymbol);
-
-                row.innerHTML = `
-                    <td>
-                        <a href="https://bscscan.com/tx/${tx.hash}" class="tx-link" target="_blank">
-                            ${tx.hash.substring(0, 10)}...
-                        </a>
-                    </td>
-                    <td>${tx.blockNumber}</td>
-                    <td>${bscService.formatTimestamp(tx.timeStamp)}</td>
-                    <td>
-                        <a href="https://bscscan.com/address/${tx.from}" class="address-link" target="_blank">
-                            ${fromLabel}
-                        </a>
-                        ${isFromContract ?
-                            `<button class="view-contract-btn" data-address="${tx.from}" title="查看合约详情">📄</button>` : ''}
-                    </td>
-                    <td>
-                        <a href="https://bscscan.com/address/${tx.to}" class="address-link" target="_blank">
-                            ${toLabel}
-                        </a>
-                        ${isToContract ?
-                            `<button class="view-contract-btn" data-address="${tx.to}" title="查看合约详情">📄</button>` : ''}
-                    </td>
-                    <td>
-                        ${valueDisplay}
-                        <span class="token-symbol-label ${isHighlighted ? 'highlighted' : ''}" data-token="${tokenSymbol}">${tokenSymbol}</span>
-                    </td>
-                    <td>${directionLabel}</td>
-                `;
-
-                // 如果是当前筛选的币种，添加高亮样式
-                if (isHighlighted) {
-                    row.classList.add('highlighted-row');
-                }
-
-                txTableBody.appendChild(row);
-            });
-
-            // 更新分页信息
-            currentPageNum = pagination.currentPage;
-
-            // 计算过滤后的总记录数
-            const totalFilteredRecords = currentTxType === 'all' ?
-                pagination.totalRecords :
-                result.transactions.filter(tx => tx.direction === currentTxType).length;
-
-            const startRecord = filteredTransactions.length > 0 ?
-                (pagination.currentPage - 1) * pagination.pageSize + 1 : 0;
-            const endRecord = Math.min(startRecord + filteredTransactions.length - 1, totalFilteredRecords);
-
-            pageStart.textContent = startRecord;
-            pageEnd.textContent = endRecord;
-            totalRecords.textContent = totalFilteredRecords;
-
-            // 计算过滤后的总页数
-            const totalFilteredPages = Math.ceil(totalFilteredRecords / pagination.pageSize);
-
-            currentPage.textContent = pagination.currentPage;
-            totalPages.textContent = totalFilteredPages;
-
-            // 更新按钮状态
-            firstPageBtn.disabled = !pagination.hasPreviousPage;
-            prevPageBtn.disabled = !pagination.hasPreviousPage;
-            nextPageBtn.disabled = !pagination.hasNextPage;
-            lastPageBtn.disabled = !pagination.hasNextPage;
-
-            // 显示分页控件
-            txPagination.style.display = filteredTransactions.length > 0 ? 'flex' : 'none';
+            // 确保分页功能正常工作
+            console.log(`交易记录总数: ${filteredTransactions.length}, 每页显示: ${window.currentPageSize}, 当前页: ${window.currentPageNum}`);
 
             // 显示币种筛选提示
             updateFilterIndicator();
@@ -531,8 +464,8 @@ function initApp() {
                 // 显示合约创建者查询提示
                 showContractCreatorsQueryHint();
 
-                // 更新合约列表页面
-                updateTokenListPage();
+                // 更新合约列表页面，但不自动查询合约创建者信息
+                updateTokenListPage(null, false);
 
                 // 注释掉自动开始查询合约创建者信息的功能
                 // startContractCreatorsQuery();
@@ -722,7 +655,7 @@ function initApp() {
             updateFilterIndicator();
 
             // 重新显示交易记录
-            const cachedResult = bscService.getCachedTransactions(currentAddress, currentPageNum, pageSize);
+            const cachedResult = bscService.getCachedTransactions(currentAddress, window.currentPageNum || 1, pageSize);
             if (cachedResult) {
                 console.log('清除所有筛选');
 
@@ -807,9 +740,9 @@ function initApp() {
             updateFilterIndicator();
 
             // 重新显示交易记录
-            const cachedResult = bscService.getCachedTransactions(currentAddress, currentPageNum, pageSize);
+            const cachedResult = bscService.getCachedTransactions(currentAddress, window.currentPageNum || 1, pageSize);
             if (cachedResult) {
-                console.log('应用筛选:', selectedTokens, '当前页:', currentPageNum);
+                console.log('应用筛选:', selectedTokens, '当前页:', window.currentPageNum || 1);
 
                 // 强制重新渲染交易记录，确保筛选生效
                 displayTransactions({
@@ -817,9 +750,9 @@ function initApp() {
                     pagination: cachedResult.pagination
                 });
 
-                // 如果当前在"交易相关合约"标签页，更新合约列表
+                // 如果当前在"交易相关合约"标签页，更新合约列表，不自动查询
                 if (currentContractType === 'filtered') {
-                    updateTokenListPage();
+                    updateTokenListPage('', false);
                 }
             } else {
                 console.error('无法获取缓存的交易记录');
@@ -866,8 +799,8 @@ function initApp() {
                 });
             }
 
-            // 同时更新合约列表页面
-            updateTokenListPage();
+            // 同时更新合约列表页面，不自动查询
+            updateTokenListPage('', false);
         }
 
         // 显示合约创建者查询提示
@@ -958,7 +891,9 @@ function initApp() {
         }
 
         // 更新合约列表页面
-        async function updateTokenListPage(searchTerm = '') {
+        // searchTerm: 搜索关键词
+        // autoQueryCreators: 是否自动查询合约创建者信息，默认为 true
+        async function updateTokenListPage(searchTerm = '', autoQueryCreators = true) {
 
             // 检查是否正在查询合约创建者信息
             const progress = bscService.getContractCreatorsQueryProgress();
@@ -1016,9 +951,52 @@ function initApp() {
                         contractsArray = Object.values(createdContracts);
                         console.log(`找到 ${contractsArray.length} 个由当前地址创建的合约`);
 
-                        // 不再尝试再次查询，避免循环查询
-                        if (contractsArray.length === 0) {
-                            console.log(`未找到由当前地址创建的合约，但不再尝试查询以避免循环`);
+                        // 如果没有找到合约，但有代币合约，并且允许自动查询，尝试查询
+                        if (contractsArray.length === 0 && Object.keys(bscService.getTokenContracts() || {}).length > 0 && autoQueryCreators) {
+                            console.log(`未找到由当前地址创建的合约，但有代币合约，尝试查询`);
+
+                            // 检查是否正在查询中
+                            const progress = bscService.getContractCreatorsQueryProgress();
+                            if (!progress.isQuerying) {
+                                console.log('开始查询所有合约创建者信息...');
+
+                                // 启动进度更新定时器
+                                startProgressUpdateTimer();
+
+                                // 使用 setTimeout 来确保 UI 更新后再开始查询
+                                setTimeout(async () => {
+                                    try {
+                                        await bscService.queryAllContractCreators(true);
+
+                                        // 停止进度更新定时器
+                                        stopProgressUpdateTimer();
+
+                                        console.log('所有合约创建者信息查询完成');
+
+                                        // 再次获取由当前地址创建的合约
+                                        const updatedCreatedContracts = await bscService.getCreatedContracts();
+                                        const updatedCreatedContractsCount = Object.keys(updatedCreatedContracts || {}).length;
+                                        console.log(`查询后找到 ${updatedCreatedContractsCount} 个由当前地址创建的合约`);
+
+                                        // 更新合约列表，但不再自动查询
+                                        updateTokenListPage('', false).catch(error => {
+                                            console.error('更新合约列表失败:', error);
+                                        });
+                                    } catch (error) {
+                                        console.error('查询合约创建者信息失败:', error);
+                                        // 停止进度更新定时器
+                                        stopProgressUpdateTimer();
+                                        // 显示错误信息
+                                        tokenListEmpty.innerHTML = `<p>查询合约创建者信息失败: ${error.message}</p>`;
+                                    }
+                                }, 100);
+
+                                // 显示加载中状态
+                                tokenListEmpty.innerHTML = '<p>正在查询合约创建者信息，请稍候...</p>';
+                                return; // 不继续更新列表，等待查询完成
+                            }
+                        } else if (contractsArray.length === 0 && Object.keys(bscService.getTokenContracts() || {}).length > 0 && !autoQueryCreators) {
+                            console.log(`未找到由当前地址创建的合约，但有代币合约，不自动查询`);
                         }
 
                         // 如果没有找到合约，但有代币合约，显示提示信息
@@ -1407,33 +1385,7 @@ function initApp() {
             await loadTransactionsPage(address, 1);
         });
 
-        // 分页按钮事件
-        firstPageBtn.addEventListener('click', () => {
-            if (currentAddress) {
-                loadTransactionsPage(currentAddress, 1);
-            }
-        });
-
-        prevPageBtn.addEventListener('click', () => {
-            if (currentAddress && currentPageNum > 1) {
-                loadTransactionsPage(currentAddress, currentPageNum - 1);
-            }
-        });
-
-        nextPageBtn.addEventListener('click', () => {
-            if (currentAddress) {
-                loadTransactionsPage(currentAddress, currentPageNum + 1);
-            }
-        });
-
-        lastPageBtn.addEventListener('click', () => {
-            if (currentAddress) {
-                const lastPage = parseInt(totalPages.textContent);
-                if (lastPage > 0) {
-                    loadTransactionsPage(currentAddress, lastPage);
-                }
-            }
-        });
+        // 分页按钮事件已经在 pagination-new.js 中处理，这里不再需要
 
         // 查询合约信息
         searchContractBtn.addEventListener('click', async () => {
@@ -1712,23 +1664,55 @@ function initApp() {
 
                 // 显示合约信息
                 let infoHtml = `
-                    <p><strong>合约地址:</strong>
-                        <a href="https://bscscan.com/address/${contract.address}" target="_blank">${contract.address}</a>
-                    </p>
-                    <p><strong>BNB余额:</strong> ${contract.balance}</p>
-                    <p><strong>字节码大小:</strong> ${contract.bytecodeSize} 字节</p>
-                    <p><strong>创建者:</strong>
-                        <a href="https://bscscan.com/address/${contract.creator}" target="_blank">${contract.creator}</a>
-                    </p>
-                    <p><strong>创建交易:</strong>
-                        <a href="https://bscscan.com/tx/${contract.creationTx}" target="_blank">${contract.creationTx}</a>
-                    </p>
-                    <p><strong>已验证源代码:</strong> ${contract.hasVerifiedSource ? '是' : '否'}</p>
+                    <div class="contract-info-grid">
+                        <div class="contract-info-row">
+                            <div class="contract-info-label">合约地址:</div>
+                            <div class="contract-info-value">
+                                <a href="https://bscscan.com/address/${contract.address}" target="_blank" title="${contract.address}">${contract.address.substring(0, 10)}...${contract.address.substring(contract.address.length - 8)}</a>
+                            </div>
+                        </div>
+
+                        <div class="contract-info-row">
+                            <div class="contract-info-label">BNB余额:</div>
+                            <div class="contract-info-value">${contract.balance}</div>
+                        </div>
+
+                        <div class="contract-info-row">
+                            <div class="contract-info-label">字节码大小:</div>
+                            <div class="contract-info-value">${contract.bytecodeSize} 字节</div>
+                        </div>
+
+                        <div class="contract-info-row">
+                            <div class="contract-info-label">创建者:</div>
+                            <div class="contract-info-value">
+                                <a href="https://bscscan.com/address/${contract.creator}" target="_blank" title="${contract.creator}">${contract.creator.substring(0, 10)}...${contract.creator.substring(contract.creator.length - 8)}</a>
+                            </div>
+                        </div>
+
+                        <div class="contract-info-row">
+                            <div class="contract-info-label">创建交易:</div>
+                            <div class="contract-info-value">
+                                <a href="https://bscscan.com/tx/${contract.creationTx}" target="_blank" title="${contract.creationTx}">${contract.creationTx.substring(0, 10)}...${contract.creationTx.substring(contract.creationTx.length - 8)}</a>
+                            </div>
+                        </div>
+
+                        <div class="contract-info-row">
+                            <div class="contract-info-label">已验证源代码:</div>
+                            <div class="contract-info-value">${contract.hasVerifiedSource ? '是' : '否'}</div>
+                        </div>
+                    </div>
                 `;
 
                 // 如果有ABI消息，显示它
                 if (contract.abiMessage) {
-                    infoHtml += `<p><strong>ABI信息:</strong> ${contract.abiMessage}</p>`;
+                    infoHtml += `
+                        <div class="contract-info-grid">
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">ABI信息:</div>
+                                <div class="contract-info-value">${contract.abiMessage}</div>
+                            </div>
+                        </div>
+                    `;
                 }
 
                 // 如果没有API Key，显示提示信息
@@ -1752,10 +1736,27 @@ function initApp() {
                 if (contract.isToken && contract.tokenInfo) {
                     infoHtml += `
                         <h4>代币信息</h4>
-                        <p><strong>名称:</strong> ${contract.tokenInfo.name}</p>
-                        <p><strong>符号:</strong> ${contract.tokenInfo.symbol}</p>
-                        <p><strong>小数位:</strong> ${contract.tokenInfo.decimals}</p>
-                        <p><strong>总供应量:</strong> ${contract.tokenInfo.totalSupply} ${contract.tokenInfo.symbol}</p>
+                        <div class="contract-info-grid">
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">名称:</div>
+                                <div class="contract-info-value">${contract.tokenInfo.name}</div>
+                            </div>
+
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">符号:</div>
+                                <div class="contract-info-value">${contract.tokenInfo.symbol}</div>
+                            </div>
+
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">小数位:</div>
+                                <div class="contract-info-value">${contract.tokenInfo.decimals}</div>
+                            </div>
+
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">总供应量:</div>
+                                <div class="contract-info-value">${contract.tokenInfo.totalSupply} ${contract.tokenInfo.symbol}</div>
+                            </div>
+                        </div>
                     `;
                 }
 
@@ -1763,11 +1764,32 @@ function initApp() {
                 infoHtml += `
                     <div class="debug-info" style="margin-top: 20px; padding: 10px; background-color: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; color: #6c757d;">
                         <h4>调试信息</h4>
-                        <p><strong>会话状态:</strong> ${burnVerificationPassed ? '已验证' : '未验证'}</p>
-                        <p><strong>验证交易哈希:</strong> ${verifiedBurnTxHash || '无'}</p>
-                        <p><strong>当前查询地址:</strong> ${currentAddress || '无'}</p>
-                        <p><strong>是否为代币合约:</strong> ${contract.isToken ? '是' : '否'}</p>
-                        <p><strong>ABI消息:</strong> ${contract.abiMessage || '无'}</p>
+                        <div class="contract-info-grid">
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">会话状态:</div>
+                                <div class="contract-info-value">${burnVerificationPassed ? '已验证' : '未验证'}</div>
+                            </div>
+
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">验证交易哈希:</div>
+                                <div class="contract-info-value">${verifiedBurnTxHash ? `<a href="https://bscscan.com/tx/${verifiedBurnTxHash}" target="_blank" title="${verifiedBurnTxHash}">${verifiedBurnTxHash.substring(0, 10)}...${verifiedBurnTxHash.substring(verifiedBurnTxHash.length - 8)}</a>` : '无'}</div>
+                            </div>
+
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">当前查询地址:</div>
+                                <div class="contract-info-value">${currentAddress ? `<a href="https://bscscan.com/address/${currentAddress}" target="_blank" title="${currentAddress}">${currentAddress.substring(0, 10)}...${currentAddress.substring(currentAddress.length - 8)}</a>` : '无'}</div>
+                            </div>
+
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">是否为代币合约:</div>
+                                <div class="contract-info-value">${contract.isToken ? '是' : '否'}</div>
+                            </div>
+
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">ABI消息:</div>
+                                <div class="contract-info-value">${contract.abiMessage || '无'}</div>
+                            </div>
+                        </div>
                     </div>
                 `;
 
@@ -1778,12 +1800,22 @@ function initApp() {
                 contractLoading.style.display = 'none';
 
                 contractInfo.innerHTML = `
-                    <div class="error-message" style="padding: 15px; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; color: #721c24; margin-top: 15px;">
+                    <div class="burn-error">
                         <h4>❌ 查询失败</h4>
-                        <p><strong>错误信息:</strong> ${error.message}</p>
-                        <p>请检查合约地址是否正确，或者稍后再试。</p>
-                        <p><strong>调试信息:</strong></p>
-                        <pre style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; overflow: auto;">${error.stack || '无堆栈信息'}</pre>
+                        <div class="contract-info-grid">
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">错误信息:</div>
+                                <div class="contract-info-value">${error.message}</div>
+                            </div>
+
+                            <div class="contract-info-row">
+                                <div class="contract-info-label">提示:</div>
+                                <div class="contract-info-value">请检查合约地址是否正确，或者稍后再试。</div>
+                            </div>
+                        </div>
+
+                        <h4 style="margin-top: 15px;">调试信息</h4>
+                        <pre style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; overflow: auto; font-size: 12px; max-height: 200px;">${error.stack || '无堆栈信息'}</pre>
                     </div>
                 `;
                 contractResults.style.display = 'block';
@@ -1920,8 +1952,8 @@ function initApp() {
 
                             if (createdContractsCount > 0) {
                                 console.log(`已有 ${createdContractsCount} 个创建的合约缓存，无需重新查询`);
-                                // 更新合约列表
-                                updateTokenListPage().catch(error => {
+                                // 更新合约列表，允许自动查询
+                                updateTokenListPage('', true).catch(error => {
                                     console.error('更新合约列表失败:', error);
                                 });
                             } else if (isQuerying) {
@@ -1940,22 +1972,33 @@ function initApp() {
                                     startProgressUpdateTimer();
 
                                     // 查询所有合约的创建者信息，强制重新查询以确保获取所有创建的合约
-                                    await bscService.queryAllContractCreators(true);
+                                    // 使用 setTimeout 来确保 UI 更新后再开始查询
+                                    setTimeout(async () => {
+                                        try {
+                                            await bscService.queryAllContractCreators(true);
 
-                                    // 停止进度更新定时器
-                                    stopProgressUpdateTimer();
+                                            // 停止进度更新定时器
+                                            stopProgressUpdateTimer();
 
-                                    console.log('所有合约创建者信息查询完成');
+                                            console.log('所有合约创建者信息查询完成');
 
-                                    // 再次获取由当前地址创建的合约
-                                    const updatedCreatedContracts = await bscService.getCreatedContracts();
-                                    const updatedCreatedContractsCount = Object.keys(updatedCreatedContracts || {}).length;
-                                    console.log(`查询后找到 ${updatedCreatedContractsCount} 个由当前地址创建的合约`);
+                                            // 再次获取由当前地址创建的合约
+                                            const updatedCreatedContracts = await bscService.getCreatedContracts();
+                                            const updatedCreatedContractsCount = Object.keys(updatedCreatedContracts || {}).length;
+                                            console.log(`查询后找到 ${updatedCreatedContractsCount} 个由当前地址创建的合约`);
 
-                                    // 更新合约列表
-                                    updateTokenListPage().catch(error => {
-                                        console.error('更新合约列表失败:', error);
-                                    });
+                                            // 更新合约列表，但不自动查询
+                                            updateTokenListPage('', false).catch(error => {
+                                                console.error('更新合约列表失败:', error);
+                                            });
+                                        } catch (error) {
+                                            console.error('查询合约创建者信息失败:', error);
+                                            // 停止进度更新定时器
+                                            stopProgressUpdateTimer();
+                                            // 显示错误信息
+                                            tokenListEmpty.innerHTML = `<p>查询合约创建者信息失败: ${error.message}</p>`;
+                                        }
+                                    }, 100);
                                 } else {
                                     console.log('没有代币合约需要查询');
                                     tokenListEmpty.innerHTML = '<p>没有代币合约需要查询</p>';
@@ -1966,13 +2009,17 @@ function initApp() {
                         console.error('查询合约创建者信息失败:', error);
                         // 停止进度更新定时器
                         stopProgressUpdateTimer();
+                        // 显示错误信息
+                        tokenListEmpty.innerHTML = `<p>查询合约创建者信息失败: ${error.message}</p>`;
                     }
                 }
 
                 // 更新合约列表（异步调用）
                 // 如果是"我创建的合约"标签页，且正在查询中，不更新列表
                 if (!(contractType === 'created' && bscService.getContractCreatorsQueryProgress().isQuerying)) {
-                    updateTokenListPage(tokenSearchInput.value.trim()).catch(error => {
+                    // 如果是"我创建的合约"标签页，允许自动查询，否则不自动查询
+                    const allowAutoQuery = contractType === 'created';
+                    updateTokenListPage(tokenSearchInput.value.trim(), allowAutoQuery).catch(error => {
                         console.error('更新合约列表失败:', error);
                     });
                 }
@@ -1996,8 +2043,8 @@ function initApp() {
             // 清空搜索框
             tokenSearchInput.value = '';
 
-            // 更新合约列表页面（异步调用）
-            updateTokenListPage().catch(error => {
+            // 更新合约列表页面（异步调用），不自动查询
+            updateTokenListPage('', false).catch(error => {
                 console.error('更新合约列表失败:', error);
             });
         });
@@ -2005,7 +2052,7 @@ function initApp() {
         // 搜索按钮
         tokenSearchBtn.addEventListener('click', () => {
             const searchTerm = tokenSearchInput.value.trim();
-            updateTokenListPage(searchTerm).catch(error => {
+            updateTokenListPage(searchTerm, false).catch(error => {
                 console.error('更新合约列表失败:', error);
             });
         });
@@ -2014,14 +2061,14 @@ function initApp() {
         tokenSearchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 const searchTerm = tokenSearchInput.value.trim();
-                updateTokenListPage(searchTerm).catch(error => {
+                updateTokenListPage(searchTerm, false).catch(error => {
                     console.error('更新合约列表失败:', error);
                 });
             }
         });
 
-        // 初始化合约列表页面（异步调用）
-        updateTokenListPage().catch(error => {
+        // 初始化合约列表页面（异步调用），不自动查询
+        updateTokenListPage('', false).catch(error => {
             console.error('初始化合约列表失败:', error);
         });
 
@@ -2191,7 +2238,7 @@ function initApp() {
             if (!found && currentContractType === 'all') {
                 console.log(`未找到合约项: ${contractAddress}，尝试刷新列表`);
                 // 如果当前是"所有合约"标签页，刷新列表
-                updateTokenListPage().catch(error => {
+                updateTokenListPage('', false).catch(error => {
                     console.error('更新合约列表失败:', error);
                 });
             }
@@ -2342,6 +2389,30 @@ function initApp() {
                     // 显示查询部分
                     txQuerySection.style.display = 'block';
 
+                    // 显示验证结果容器
+                    const verificationResultsContainer = document.getElementById('verificationResultsContainer');
+                    if (verificationResultsContainer) {
+                        verificationResultsContainer.style.display = 'block';
+
+                        // 如果有交易哈希，显示简单的验证通过信息
+                        if (status.txHash) {
+                            burnInfo.innerHTML = `
+                                <div class="burn-success">
+                                    <h4>✅ 验证通过</h4>
+                                    <div class="burn-info-grid">
+                                        <div class="burn-info-row">
+                                            <div class="burn-info-label">交易哈希:</div>
+                                            <div class="burn-info-value">
+                                                <a href="https://bscscan.com/tx/${status.txHash}" target="_blank" title="${status.txHash}">${status.txHash.substring(0, 20)}...${status.txHash.substring(status.txHash.length - 8)}</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            burnResults.style.display = 'block';
+                        }
+                    }
+
                     console.log('验证状态已恢复:', status);
                 }
             } catch (error) {
@@ -2436,28 +2507,71 @@ function initApp() {
                         burnVerificationPassed = true;
                         verifiedBurnTxHash = txHash;
 
+                        // 隐藏原始验证结果区域
+                        burnResults.style.display = 'none';
+
+                        // 显示单独的验证结果容器
+                        const verificationResultsContainer = document.getElementById('verificationResultsContainer');
+                        verificationResultsContainer.style.display = 'block';
+
                         burnInfo.innerHTML = `
                             <div class="burn-success">
                                 <h4>✅ 验证通过</h4>
-                                <p><strong>交易哈希:</strong>
-                                    <a href="https://bscscan.com/tx/${txHash}" target="_blank">${txHash}</a>
-                                </p>
-                                <p><strong>销毁数量:</strong> ${burnResult.amount} ${burnResult.symbol} <span class="verification-check">✓ 符合要求</span></p>
-                                <p><strong>代币名称:</strong> ${burnResult.token.name}</p>
-                                <p><strong>代币符号:</strong> ${burnResult.symbol}</p>
-                                <p><strong>代币合约:</strong>
-                                    <a href="https://bscscan.com/token/${burnResult.token.address}" target="_blank">${burnResult.token.address}</a>
-                                    <span class="verification-check">✓ 符合要求</span>
-                                </p>
-                                <p><strong>销毁者地址:</strong>
-                                    <a href="https://bscscan.com/address/${burnResult.from}" target="_blank">${burnResult.from}</a>
-                                    <button id="useFromAddress" class="btn-sm">使用此地址</button>
-                                </p>
-                                <p><strong>销毁地址:</strong>
-                                    <a href="https://bscscan.com/address/${burnResult.burnAddress}" target="_blank">${burnResult.burnAddress}</a>
-                                    ${burnResult.burnAddress.toLowerCase() === '0x000000000000000000000000000000000000dead' ? ' (Dead 地址)' : ''}
-                                </p>
-                                <p><strong>销毁方式:</strong> 转账到 Dead 地址</p>
+                                <div class="burn-info-grid">
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">交易哈希:</div>
+                                        <div class="burn-info-value">
+                                            <a href="https://bscscan.com/tx/${txHash}" target="_blank" title="${txHash}">${txHash.substring(0, 20)}...${txHash.substring(txHash.length - 8)}</a>
+                                        </div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">销毁数量:</div>
+                                        <div class="burn-info-value">
+                                            ${burnResult.amount} ${burnResult.symbol} <span class="verification-check">✓ 符合要求</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">代币名称:</div>
+                                        <div class="burn-info-value">${burnResult.token.name}</div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">代币符号:</div>
+                                        <div class="burn-info-value">${burnResult.symbol}</div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">代币合约:</div>
+                                        <div class="burn-info-value">
+                                            <a href="https://bscscan.com/token/${burnResult.token.address}" target="_blank" title="${burnResult.token.address}">${burnResult.token.address.substring(0, 10)}...${burnResult.token.address.substring(burnResult.token.address.length - 8)}</a>
+                                            <span class="verification-check">✓ 符合要求</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">销毁者地址:</div>
+                                        <div class="burn-info-value">
+                                            <a href="https://bscscan.com/address/${burnResult.from}" target="_blank" title="${burnResult.from}">${burnResult.from.substring(0, 10)}...${burnResult.from.substring(burnResult.from.length - 8)}</a>
+                                            <button id="useFromAddress" class="btn-sm">使用此地址</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">销毁地址:</div>
+                                        <div class="burn-info-value">
+                                            <a href="https://bscscan.com/address/${burnResult.burnAddress}" target="_blank" title="${burnResult.burnAddress}">${burnResult.burnAddress.substring(0, 10)}...${burnResult.burnAddress.substring(burnResult.burnAddress.length - 8)}</a>
+                                            ${burnResult.burnAddress.toLowerCase() === '0x000000000000000000000000000000000000dead' ? ' (Dead 地址)' : ''}
+                                        </div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">销毁方式:</div>
+                                        <div class="burn-info-value">转账到 Dead 地址</div>
+                                    </div>
+                                </div>
+
                                 <div class="verification-actions">
                                     <button id="proceedToQuery" class="btn">继续查询转账记录</button>
                                 </div>
@@ -2466,6 +2580,10 @@ function initApp() {
                     } else {
                         // 找到销毁操作，但不是特定的代币或数量
                         burnVerificationPassed = false;
+
+                        // 显示单独的验证结果容器
+                        const verificationResultsContainer = document.getElementById('verificationResultsContainer');
+                        verificationResultsContainer.style.display = 'block';
 
                         let errorMessage = '';
                         if (!burnResult.isTargetContract) {
@@ -2480,14 +2598,29 @@ function initApp() {
                                 <h4>⚠️ 验证未通过</h4>
                                 <p>发现销毁操作，但不符合特定要求：</p>
                                 ${errorMessage}
-                                <p><strong>交易哈希:</strong>
-                                    <a href="https://bscscan.com/tx/${txHash}" target="_blank">${txHash}</a>
-                                </p>
-                                <p><strong>销毁数量:</strong> ${burnResult.amount} ${burnResult.symbol} ${burnResult.isTargetAmount ? '<span class="verification-check">✓</span>' : '<span class="verification-error">✗</span>'}</p>
-                                <p><strong>代币合约:</strong>
-                                    <a href="https://bscscan.com/token/${burnResult.token.address}" target="_blank">${burnResult.token.address}</a>
-                                    ${burnResult.isTargetContract ? '<span class="verification-check">✓</span>' : '<span class="verification-error">✗</span>'}
-                                </p>
+                                <div class="burn-info-grid">
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">交易哈希:</div>
+                                        <div class="burn-info-value">
+                                            <a href="https://bscscan.com/tx/${txHash}" target="_blank" title="${txHash}">${txHash.substring(0, 20)}...${txHash.substring(txHash.length - 8)}</a>
+                                        </div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">销毁数量:</div>
+                                        <div class="burn-info-value">
+                                            ${burnResult.amount} ${burnResult.symbol} ${burnResult.isTargetAmount ? '<span class="verification-check">✓</span>' : '<span class="verification-error">✗</span>'}
+                                        </div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">代币合约:</div>
+                                        <div class="burn-info-value">
+                                            <a href="https://bscscan.com/token/${burnResult.token.address}" target="_blank" title="${burnResult.token.address}">${burnResult.token.address.substring(0, 10)}...${burnResult.token.address.substring(burnResult.token.address.length - 8)}</a>
+                                            ${burnResult.isTargetContract ? '<span class="verification-check">✓</span>' : '<span class="verification-error">✗</span>'}
+                                        </div>
+                                    </div>
+                                </div>
                                 <p>请提供一个销毁了 0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444 代币，数量为 100 的交易哈希。</p>
                             </div>
                         `;
@@ -2513,10 +2646,27 @@ function initApp() {
                         });
                     }
                 } else {
+                    // 显示单独的验证结果容器
+                    const verificationResultsContainer = document.getElementById('verificationResultsContainer');
+                    verificationResultsContainer.style.display = 'block';
+
                     burnInfo.innerHTML = `
                         <div class="burn-not-found">
                             <h4>❌ 验证失败</h4>
-                            <p>在交易 <a href="https://bscscan.com/tx/${txHash}" target="_blank">${txHash}</a> 中未找到代币销毁操作。</p>
+                            <div class="burn-info-grid">
+                                <div class="burn-info-row">
+                                    <div class="burn-info-label">交易哈希:</div>
+                                    <div class="burn-info-value">
+                                        <a href="https://bscscan.com/tx/${txHash}" target="_blank" title="${txHash}">${txHash.substring(0, 20)}...${txHash.substring(txHash.length - 8)}</a>
+                                    </div>
+                                </div>
+
+                                <div class="burn-info-row">
+                                    <div class="burn-info-label">问题:</div>
+                                    <div class="burn-info-value">未找到代币销毁操作</div>
+                                </div>
+                            </div>
+
                             <p>可能的原因:</p>
                             <ul>
                                 <li>这不是一个代币销毁交易</li>
@@ -2536,11 +2686,20 @@ function initApp() {
                 // 隐藏加载中
                 burnLoading.style.display = 'none';
 
+                // 显示单独的验证结果容器
+                const verificationResultsContainer = document.getElementById('verificationResultsContainer');
+                verificationResultsContainer.style.display = 'block';
+
                 // 显示错误信息
                 burnInfo.innerHTML = `
                     <div class="burn-error">
                         <h4>❌ 验证失败</h4>
-                        <p>错误信息: ${error.message}</p>
+                        <div class="burn-info-grid">
+                            <div class="burn-info-row">
+                                <div class="burn-info-label">错误信息:</div>
+                                <div class="burn-info-value">${error.message}</div>
+                            </div>
+                        </div>
                         <p>请确认交易哈希是否正确，并重试。</p>
                     </div>
                 `;
@@ -2796,8 +2955,8 @@ function initApp() {
 
                                 // 2秒后刷新合约列表
                                 setTimeout(() => {
-                                    // 刷新合约列表
-                                    updateTokenListPage().catch(error => {
+                                    // 刷新合约列表，不自动查询
+                                    updateTokenListPage('', false).catch(error => {
                                         console.error('更新合约列表失败:', error);
                                     });
                                 }, 2000);

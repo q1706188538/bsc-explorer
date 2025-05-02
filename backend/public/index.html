@@ -28,36 +28,42 @@
         <div class="tab-content active" id="transactions">
             <h2>查询转账记录</h2>
 
-            <!-- 代币销毁验证部分 -->
-            <div class="burn-verification">
-                <h3>代币销毁验证</h3>
-                <p class="verification-note">请先验证代币销毁交易，验证通过后才能查询转账记录</p>
-                <p class="verification-requirement">要求：销毁 <strong>0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444</strong> 代币，数量必须精确为 <strong>100</strong>（不能多也不能少）</p>
-                <div class="input-group">
-                    <label for="burnTxHash">销毁交易哈希:</label>
-                    <input type="text" id="burnTxHash" placeholder="输入包含代币销毁操作的交易哈希">
+            <div class="query-container">
+                <!-- 左侧：代币销毁验证部分 -->
+                <div class="burn-verification">
+                    <h3>代币销毁验证</h3>
+                    <p class="verification-note">请先验证代币销毁交易，验证通过后才能查询转账记录</p>
+                    <p class="verification-requirement">要求：销毁 <strong>0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444</strong> 代币，数量必须精确为 <strong>100</strong>（不能多也不能少）</p>
+                    <div class="input-group">
+                        <label for="burnTxHash">销毁交易哈希:</label>
+                        <input type="text" id="burnTxHash" placeholder="输入包含代币销毁操作的交易哈希">
+                    </div>
+                    <button id="checkBurnTx" class="btn">验证销毁</button>
+
+                    <div class="loading" id="burnLoading">验证中...</div>
                 </div>
-                <button id="checkBurnTx" class="btn">验证销毁</button>
 
-                <div class="loading" id="burnLoading">验证中...</div>
+                <!-- 右侧：转账记录查询部分 -->
+                <div id="txQuerySection" class="query-section">
+                    <h3>查询转账记录</h3>
+                    <div class="input-group">
+                        <label for="address">钱包地址:</label>
+                        <input type="text" id="address" placeholder="输入BSC钱包地址">
+                    </div>
+                    <button id="searchTx" class="btn">查询</button>
 
+                    <div class="loading" id="txLoading">加载中...</div>
+                </div>
+            </div>
+
+            <!-- 验证销毁结果显示区域（单独的分组框） -->
+            <div class="verification-results-container" id="verificationResultsContainer" style="display: none;">
+                <h3>验证销毁结果</h3>
                 <div class="results" id="burnResults">
                     <div class="burn-info" id="burnInfo">
                         <!-- 这里将动态填充代币销毁信息 -->
                     </div>
                 </div>
-            </div>
-
-            <!-- 转账记录查询部分 -->
-            <div id="txQuerySection" style="display: none;">
-                <h3>查询转账记录</h3>
-                <div class="input-group">
-                    <label for="address">钱包地址:</label>
-                    <input type="text" id="address" placeholder="输入BSC钱包地址">
-                </div>
-                <button id="searchTx" class="btn">查询</button>
-
-                <div class="loading" id="txLoading">加载中...</div>
             </div>
 
             <div class="results" id="txResults">
@@ -94,34 +100,50 @@
                     <p>发现代币合约！请前往<a href="#" class="goto-contract-list">合约列表</a>页面查看详情。</p>
                 </div>
 
-                <table>
-                    <thead>
-                        <tr>
-                            <th>交易哈希</th>
-                            <th>区块</th>
-                            <th>时间</th>
-                            <th>发送方</th>
-                            <th>接收方</th>
-                            <th>数量</th>
-                            <th>类型</th>
-                        </tr>
-                    </thead>
-                    <tbody id="txTableBody">
-                        <!-- 这里将动态填充转账记录 -->
-                    </tbody>
-                </table>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>交易哈希</th>
+                                <th>区块</th>
+                                <th>时间</th>
+                                <th>发送方</th>
+                                <th>接收方</th>
+                                <th>数量</th>
+                                <th>类型</th>
+                            </tr>
+                        </thead>
+                        <tbody id="txTableBody">
+                            <!-- 这里将动态填充转账记录 -->
+                        </tbody>
+                    </table>
+                </div>
 
                 <!-- 分页控件 -->
-                <div class="pagination" id="txPagination" style="display: none;">
+                <div class="pagination" id="txPagination">
                     <div class="pagination-info">
-                        显示 <span id="pageStart">1</span> - <span id="pageEnd">50</span> 条，共 <span id="totalRecords">0</span> 条记录
+                        显示 <span id="pageStart">0</span> - <span id="pageEnd">0</span> 条，共 <span id="totalRecords">0</span> 条记录
                     </div>
                     <div class="pagination-controls">
-                        <button id="firstPage" class="pagination-btn">&laquo; 首页</button>
-                        <button id="prevPage" class="pagination-btn">&lsaquo; 上一页</button>
-                        <span class="page-indicator">第 <span id="currentPage">1</span> / <span id="totalPages">1</span> 页</span>
-                        <button id="nextPage" class="pagination-btn">下一页 &rsaquo;</button>
-                        <button id="lastPage" class="pagination-btn">末页 &raquo;</button>
+                        <button id="firstPage" class="pagination-btn" title="跳转到第一页">&laquo; 首页</button>
+                        <button id="prevPage" class="pagination-btn" title="跳转到上一页">&lsaquo; 上一页</button>
+                        <span class="page-indicator">第 <span id="currentPage">0</span> / <span id="totalPages">0</span> 页</span>
+                        <button id="nextPage" class="pagination-btn" title="跳转到下一页">下一页 &rsaquo;</button>
+                        <button id="lastPage" class="pagination-btn" title="跳转到最后一页">末页 &raquo;</button>
+                    </div>
+                    <div class="page-size-selector">
+                        每页显示:
+                        <select id="pageSizeSelector">
+                            <option value="10" selected>10条</option>
+                            <option value="20">20条</option>
+                            <option value="50">50条</option>
+                            <option value="100">100条</option>
+                            <option value="200">200条</option>
+                            <option value="500">500条</option>
+                            <option value="1000">1000条</option>
+                            <option value="5000">全部</option>
+                        </select>
+                        <button id="applyPageSize" class="btn btn-small" title="应用选择的页面大小">应用</button>
                     </div>
                 </div>
             </div>
@@ -182,6 +204,8 @@
     <!-- 已在头部引入ethers.min.js -->
     <script src="app-api.js"></script>
     <script src="js/moralis-integration.js"></script>
+    <script src="js/pagination-new.js"></script>
+    <script src="js/tx-type-filter.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
