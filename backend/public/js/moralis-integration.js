@@ -28,11 +28,12 @@ async function getTokenTransactions(address) {
 // 从Moralis API获取代币交易记录
 async function getTokenTransactionsFromMoralis(address) {
     console.log('使用Moralis API获取代币交易记录...');
-    
+
     try {
         // 获取代币交易记录
         const url = `${this.moralisApiUrl}/${address}/erc20/transfers?chain=bsc&limit=5000`;
         console.log('Moralis API URL:', url);
+        console.log('Moralis API Key:', this.moralisApiKey ? this.moralisApiKey.substring(0, 10) + '...' : '未设置');
 
         const response = await fetch(url, {
             method: 'GET',
@@ -41,7 +42,7 @@ async function getTokenTransactionsFromMoralis(address) {
                 'X-API-Key': this.moralisApiKey
             }
         });
-        
+
         if (!response.ok) {
             console.error(`Moralis API返回错误: ${response.status}`);
             console.log('尝试使用BSCScan API作为备选...');
@@ -107,7 +108,7 @@ async function getTokenTransactionsFromMoralis(address) {
 // 从BSCScan API获取代币交易记录
 async function getTokenTransactionsFromBscScan(address) {
     console.log('使用BSCScan API获取代币交易记录...');
-    
+
     try {
         // 获取代币交易记录
         const url = `${this.bscScanApiUrl}?module=account&action=tokentx&address=${address}&startblock=0&endblock=999999999&sort=desc&apikey=${this.apiKey}`;
@@ -168,6 +169,6 @@ if (typeof BscService !== 'undefined') {
     BscService.prototype.getTokenTransactions = getTokenTransactions;
     BscService.prototype.getTokenTransactionsFromMoralis = getTokenTransactionsFromMoralis;
     BscService.prototype.getTokenTransactionsFromBscScan = getTokenTransactionsFromBscScan;
-    
+
     console.log('Moralis API集成已加载');
 }

@@ -95,8 +95,9 @@ class BscService {
                     console.log('- 最大并发数:', this.moralisMaxConcurrent);
 
                     // 设置是否使用Moralis API
-                    this.useMoralis = !!this.moralisApiKey;
+                    this.useMoralis = !!this.moralisApiKey && (config.moralis.enabled !== false);
                     console.log('- 是否使用Moralis API:', this.useMoralis ? '是' : '否');
+                    console.log('- Moralis API 是否启用:', config.moralis.enabled !== false ? '是' : '否');
                 } else {
                     this.useMoralis = false;
                     console.log('未找到Moralis API配置，将使用BSCScan API');

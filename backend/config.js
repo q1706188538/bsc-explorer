@@ -15,7 +15,8 @@ module.exports = {
   moralis: {
     apiUrl: "https://deep-index.moralis.io/api/v2",
     apiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJub25jZSI6ImY0Y2MyNDdiLTFjZjYtNGRiNy1hY2FkLTA5YzQ2NzU1YmVmNiIsIm9yZ0lkIjoiNDQ0ODM2IiwidXNlcklkIjoiNDU3NjgzIiwidHlwZUlkIjoiYzIzNTZlNDEtMGE4Ny00MTkyLWFhNTMtYzg0ZmM3ZWNlZTBlIiwidHlwZSI6IlBST0pFQ1QiLCJpYXQiOjE3NDYxMzExNzEsImV4cCI6NDkwMTg5MTE3MX0.lOWmKlgh5nHLn58d4Dej8GIMUU5Ti5Sn5nAhwPh_T0s",
-    maxConcurrent: 20
+    maxConcurrent: 20,
+    enabled: true
   },
   bscNode: {
     rpcUrls: [
