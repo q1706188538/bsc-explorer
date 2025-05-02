@@ -336,7 +336,32 @@ class ApiService {
             const response = await this.callApi('/contract-info', 'POST', { contractAddress });
 
             // 打印响应，帮助调试
-            console.log('合约信息响应:', JSON.stringify(response, null, 2));
+            console.log(`合约信息响应 - 合约地址: ${contractAddress}`);
+
+            // 检查响应中是否包含 API 提供商信息
+            if (response.provider) {
+                console.log(`API 提供商: ${response.provider}`);
+            }
+
+            // 检查响应中是否包含 API Key 信息
+            if (response.apiKey) {
+                console.log(`API Key: ${response.apiKey}`);
+            }
+
+            // 打印响应的主要部分
+            console.log('合约信息详情:', JSON.stringify({
+                success: response.success,
+                error: response.error,
+                result: response.result ? {
+                    abi: response.result.abi ? '有 ABI' : '无 ABI',
+                    sourceCode: response.result.sourceCode ? '有源代码' : '无源代码',
+                    creator: response.result.creator,
+                    bytecodeSize: response.result.bytecodeSize,
+                    balance: response.result.balance,
+                    totalSupply: response.result.totalSupply,
+                    isToken: response.result.isToken
+                } : null
+            }, null, 2));
 
             // 处理合约信息
             const contractInfo = response.result;

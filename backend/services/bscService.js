@@ -2,6 +2,9 @@ const axios = require('axios');
 const { ethers } = require('ethers');
 const config = require('../config');
 
+// 当前使用的 API 提供商
+let currentApiProvider = 'bscscan';
+
 class BSCService {
   constructor() {
     // 初始化 BSC 提供者
@@ -56,7 +59,7 @@ class BSCService {
       this.getNextApiKey();
 
       // 打印完整响应，用于调试
-      console.log(`BSCScan API 响应 (${module}.${action}): ${JSON.stringify(response.data, null, 2)}, 当前使用的API Key: ${apiKey.substring(0, 5)}..., 参数: ${JSON.stringify(params)}`);
+      //console.log(`BSCScan API 响应 (${module}.${action}): ${JSON.stringify(response.data, null, 2)}, 当前使用的API Key: ${apiKey.substring(0, 5)}..., 参数: ${JSON.stringify(params)}`);
 
       // 特殊处理某些 API 响应
       if (module === 'contract' && action === 'getabi' && response.data.result === 'Contract source code not verified') {
@@ -367,6 +370,41 @@ class BSCService {
   // 获取地址的代币转账记录
   async getTokenTransfers(address, page = 1, offset = 5000, sort = 'desc') { // 增加到5000条，接近BSCScan API的最大限制
     try {
+      // 检查是否启用了 Moralis
+      if (config.moralis && config.moralis.enabled && config.moralis.apiKey) {
+        try {
+          console.log('尝试使用 Moralis API 获取代币转账记录...');
+          currentApiProvider = 'moralis';
+
+          // 使用 Moralis API 获取代币转账记录
+          const transfers = await this.getTokenTransfersFromMoralis(address, offset);
+
+          // 验证返回的数据格式
+          if (transfers && transfers.length > 0) {
+            const firstTx = transfers[0];
+            console.log('Moralis 返回的第一条记录字段:', Object.keys(firstTx));
+
+            // 检查必要字段是否存在
+            const requiredFields = ['hash', 'from', 'to', 'contractAddress', 'tokenName', 'tokenSymbol', 'tokenDecimal', 'value'];
+            const missingFields = requiredFields.filter(field => !firstTx[field]);
+
+            if (missingFields.length > 0) {
+              console.error(`Moralis 返回的数据缺少必要字段: ${missingFields.join(', ')}`);
+              throw new Error(`数据格式不兼容: 缺少字段 ${missingFields.join(', ')}`);
+            }
+          }
+
+          return transfers;
+        } catch (moralisError) {
+          console.error('Moralis API 调用失败，回退到 BSCScan API:', moralisError);
+          currentApiProvider = 'bscscan';
+          // 回退到 BSCScan API
+        }
+      }
+
+      // 使用 BSCScan API
+      console.log('使用 BSCScan API 获取代币转账记录...');
+      currentApiProvider = 'bscscan';
       const transfers = await this.callBscScanApi('account', 'tokentx', {
         address,
         page,
@@ -377,6 +415,137 @@ class BSCService {
       return transfers;
     } catch (error) {
       console.error('获取代币转账记录失败:', error);
+      throw error;
+    }
+  }
+
+  // 从 Moralis API 获取代币转账记录
+  async getTokenTransfersFromMoralis(address, targetLimit = 5000) {
+    try {
+      console.log(`从 Moralis 获取代币转账记录: ${address}, 目标记录数: ${targetLimit}`);
+
+      // 构建 Moralis API URL 和基本参数
+      const url = `${config.moralis.apiUrl}/${address}/erc20/transfers`;
+
+      // Moralis API 每次请求的最大记录数为 100
+      const pageLimit = 100;
+
+      // 用于存储所有获取的记录
+      let allTransfers = [];
+      // 游标，用于分页
+      let cursor = null;
+      // 请求计数器
+      let requestCount = 0;
+      // 最大请求次数（防止无限循环）
+      const maxRequests = Math.ceil(targetLimit / pageLimit);
+
+      console.log(`Moralis API URL: ${url}`);
+      console.log(`每页记录数: ${pageLimit}, 最大请求次数: ${maxRequests}`);
+
+      // 循环请求，直到获取足够的记录或达到最大请求次数
+      while (allTransfers.length < targetLimit && requestCount < maxRequests) {
+        requestCount++;
+
+        // 构建请求参数
+        const params = {
+          chain: 'bsc',
+          limit: pageLimit,
+          order: 'DESC'
+        };
+
+        // 如果有游标，添加到参数中
+        if (cursor) {
+          params.cursor = cursor;
+        }
+
+        console.log(`发送第 ${requestCount} 次请求, 参数:`, params);
+
+        // 发送请求
+        const response = await axios.get(url, {
+          headers: {
+            'Accept': 'application/json',
+            'X-API-Key': config.moralis.apiKey
+          },
+          params: params
+        });
+
+        // 检查响应
+        console.log(`第 ${requestCount} 次请求响应状态:`, response.status);
+
+        // 获取结果和游标
+        const result = response.data.result || [];
+        cursor = response.data.cursor || null;
+
+        console.log(`第 ${requestCount} 次请求返回 ${result.length} 条记录`);
+        if (cursor) {
+          console.log(`获取到游标: ${cursor.substring(0, 20)}...`);
+        } else {
+          console.log('没有更多游标，这是最后一页');
+        }
+
+        // 将结果添加到总记录中
+        allTransfers = allTransfers.concat(result);
+
+        // 如果没有游标或结果为空，说明没有更多数据了
+        if (!cursor || result.length === 0) {
+          console.log('没有更多数据，停止请求');
+          break;
+        }
+
+        // 不添加延迟，直接进行下一次请求
+        if (requestCount < maxRequests && allTransfers.length < targetLimit) {
+          console.log('继续发送下一次请求...');
+        }
+      }
+
+      console.log(`总共获取了 ${allTransfers.length} 条记录，发送了 ${requestCount} 次请求`);
+
+      if (allTransfers.length === 0) {
+        console.log('Moralis API 返回空结果');
+        return [];
+      }
+
+      // 如果有记录，打印第一条记录示例
+      if (allTransfers.length > 0) {
+        console.log('第一条记录示例:', JSON.stringify(allTransfers[0], null, 2));
+      }
+
+      // 转换为与 BSCScan API 相同的格式
+      const transfers = allTransfers.map(tx => {
+        // 打印原始字段，帮助调试
+        console.log('Moralis 原始字段:', Object.keys(tx));
+
+        // 构建与 BSCScan API 兼容的格式
+        return {
+          hash: tx.transaction_hash,
+          blockNumber: tx.block_number,
+          timeStamp: tx.block_timestamp ? Math.floor(new Date(tx.block_timestamp).getTime() / 1000).toString() : '',
+          from: tx.from_address,
+          to: tx.to_address,
+          value: tx.value,
+          // 重要：确保 contractAddress 字段正确映射
+          contractAddress: tx.token_address || tx.address,
+          // 重要：确保 tokenName 和 tokenSymbol 字段正确映射
+          tokenName: tx.token_name || 'Unknown Token',
+          tokenSymbol: tx.token_symbol || 'UNKNOWN',
+          tokenDecimal: tx.token_decimals || '18',
+          gas: tx.gas || '',
+          gasPrice: tx.gas_price || '',
+          gasUsed: tx.receipt_gas_used || '',
+          nonce: tx.nonce || '',
+          transactionIndex: tx.transaction_index || '',
+          input: '',
+          confirmations: ''
+        };
+      });
+
+      // 限制返回的记录数量
+      const limitedTransfers = transfers.slice(0, targetLimit);
+      console.log(`最终返回 ${limitedTransfers.length} 条记录`);
+
+      return limitedTransfers;
+    } catch (error) {
+      console.error('从 Moralis 获取代币转账记录失败:', error);
       throw error;
     }
   }
@@ -459,16 +628,16 @@ class BSCService {
         console.log(`合约 ${contractAddress} 创建者信息获取成功:`);
         console.log('创建者:', creationInfo[0].contractCreator);
         console.log('创建交易:', creationInfo[0].txHash);
-        console.log(`当前查询的合约地址: ${contractAddress}, 当前使用的API Key: ${this.getCurrentApiKey().substring(0, 5)}...`);
+        //console.log(`当前查询的合约地址: ${contractAddress}, 当前使用的API Key: ${this.getCurrentApiKey().substring(0, 5)}...`);
       } else {
         console.log(`未找到合约 ${contractAddress} 的创建者信息`);
-        console.log(`当前查询的合约地址: ${contractAddress}, 当前使用的API Key: ${this.getCurrentApiKey().substring(0, 5)}...`);
+        //console.log(`当前查询的合约地址: ${contractAddress}, 当前使用的API Key: ${this.getCurrentApiKey().substring(0, 5)}...`);
       }
 
       return creationInfo;
     } catch (error) {
       console.error(`获取合约 ${contractAddress} 创建者信息失败:`, error);
-      console.log(`当前查询的合约地址: ${contractAddress}, 当前使用的API Key: ${this.getCurrentApiKey().substring(0, 5)}...`);
+      //console.log(`当前查询的合约地址: ${contractAddress}, 当前使用的API Key: ${this.getCurrentApiKey().substring(0, 5)}...`);
       return [];
     }
   }
@@ -531,7 +700,16 @@ class BSCService {
       };
 
       // 打印完整的合约信息，用于调试
-      console.log(`合约信息响应:`, JSON.stringify(contractInfo, null, 2));
+      console.log(`合约信息响应 - 合约地址: ${contractAddress}, API Key: ${this.getCurrentApiKey().substring(0, 10)}..., API 提供商: ${this.getCurrentApiProvider()}`);
+      console.log(`合约信息详情:`, JSON.stringify({
+        abi: typeof abi === 'string' && abi.length > 100 ? abi.substring(0, 100) + '...' : abi,
+        sourceCode: Array.isArray(sourceCode) && sourceCode.length > 0 ? '有源代码' : '无源代码',
+        creator: creationInfo,
+        bytecodeSize: bytecodeSize,
+        balance: balance,
+        totalSupply: totalSupply,
+        isToken: isToken
+      }, null, 2));
 
       console.log(`合约信息获取成功: ${contractAddress}`);
       return contractInfo;
@@ -636,4 +814,10 @@ class BSCService {
   }
 }
 
+// 添加获取当前 API 提供商的方法
+BSCService.prototype.getCurrentApiProvider = function() {
+  return currentApiProvider;
+};
+
 module.exports = new BSCService();
+
