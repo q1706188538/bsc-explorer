@@ -1,10 +1,7 @@
 const express = require('express');
 const session = require('express-session');
 const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
 const path = require('path');
-const rateLimit = require('express-rate-limit');
 const config = require('./config');
 const apiRoutes = require('./routes/api');
 
@@ -12,28 +9,7 @@ const apiRoutes = require('./routes/api');
 const app = express();
 const port = config.port;
 
-// 安全中间件 - 允许内联脚本执行，禁用 HSTS
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'", "http:"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "http:"],
-      styleSrc: ["'self'", "'unsafe-inline'", "http:"],
-      imgSrc: ["'self'", "data:", "http:"],
-      connectSrc: ["'self'", "http:"],
-      fontSrc: ["'self'", "http:", "data:"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'", "http:"],
-      frameSrc: ["'self'", "http:"],
-    },
-  },
-  // 禁用 HSTS
-  hsts: false,
-  // 添加 referrerPolicy 设置
-  referrerPolicy: { policy: 'no-referrer' },
-}));
-
-// CORS 配置
+// 基本的 CORS 配置
 app.use(cors({
   origin: config.security.corsOrigins,
   credentials: true
@@ -42,24 +18,10 @@ app.use(cors({
 // 添加头信息，告诉浏览器不要升级到 HTTPS
 app.use((req, res, next) => {
   res.setHeader('Strict-Transport-Security', 'max-age=0');
+  res.setHeader('Content-Security-Policy', "default-src 'self' http:; script-src 'self' 'unsafe-inline' http:; style-src 'self' 'unsafe-inline' http:; img-src 'self' data: http:; connect-src 'self' http:; font-src 'self' http: data:; object-src 'none'; media-src 'self' http:; frame-src 'self' http:;");
+  res.setHeader('Referrer-Policy', 'no-referrer');
   next();
 });
-
-// 请求日志
-app.use(morgan('dev'));
-
-// 请求速率限制
-const limiter = rateLimit({
-  windowMs: config.security.rateLimitWindow,
-  max: config.security.rateLimitMax,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    message: '请求过于频繁，请稍后再试'
-  }
-});
-app.use(limiter);
 
 // 解析 JSON 请求体
 app.use(express.json());
@@ -67,7 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // 会话管理
 app.use(session({
-  secret: config.sessionSecret,
+  secret: config.sessionSecret || 'bsc-explorer-secret-key',
   resave: false,
   saveUninitialized: false,
   cookie: {

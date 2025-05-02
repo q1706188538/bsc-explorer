@@ -269,18 +269,37 @@ router.post('/contract-info', async (req, res) => {
       });
     }
 
-    console.log(`获取合约信息: ${contractAddress}`);
+    // 获取当前使用的 API Key
+    const apiKey = bscService.getCurrentApiKey();
+    console.log(`获取合约信息 - 合约地址: ${contractAddress}, API Key: ${apiKey.substring(0, 10)}..., API 提供商: ${bscService.getCurrentApiProvider()}`);
 
     try {
-      // 获取合约信息
-      const [abi, sourceCode, creator, bytecodeSize, balance, totalSupply] = await Promise.all([
-        bscService.getContractABI(contractAddress),
-        bscService.getContractSourceCode(contractAddress),
-        bscService.getContractCreator(contractAddress),
-        bscService.getContractBytecode(contractAddress),
-        bscService.getAddressBalance(contractAddress),
-        bscService.getTokenTotalSupply(contractAddress)
-      ]);
+      // 按顺序获取合约信息，避免并发请求
+      console.log('按顺序获取合约信息，避免并发请求...');
+
+      // 获取合约 ABI
+      console.log('1. 获取合约 ABI...');
+      const abi = await bscService.getContractABI(contractAddress);
+
+      // 获取合约源代码
+      console.log('2. 获取合约源代码...');
+      const sourceCode = await bscService.getContractSourceCode(contractAddress);
+
+      // 获取合约创建者信息
+      console.log('3. 获取合约创建者信息...');
+      const creator = await bscService.getContractCreator(contractAddress);
+
+      // 获取合约字节码大小
+      console.log('4. 获取合约字节码大小...');
+      const bytecodeSize = await bscService.getContractBytecode(contractAddress);
+
+      // 获取合约余额
+      console.log('5. 获取合约余额...');
+      const balance = await bscService.getAddressBalance(contractAddress);
+
+      // 获取代币总供应量
+      console.log('6. 获取代币总供应量...');
+      const totalSupply = await bscService.getTokenTotalSupply(contractAddress);
 
       console.log(`合约 ${contractAddress} 信息获取成功:`);
       console.log('ABI:', typeof abi === 'string' ? (abi.length > 100 ? abi.substring(0, 100) + '...' : abi) : 'Object');
@@ -573,7 +592,222 @@ module.exports = ${JSON.stringify(currentConfig, null, 2).replace(/"([^"]+)":/g,
   }
 });
 
+// 只获取合约创建者信息的接口
+router.post('/contract-creator', async (req, res) => {
+  try {
+    // 检查是否启用了代币销毁验证功能
+    if (config.burnVerification.enabled) {
+      // 检查会话状态
+      if (!req.session.burnVerified) {
+        console.log('警告: 会话验证未通过，但暂时允许请求继续，用于调试');
+        // 暂时注释掉，允许请求继续
+        // return res.status(403).json({
+        //   success: false,
+        //   message: '请先验证代币销毁交易'
+        // });
+      }
+    }
+
+    const { contractAddress } = req.body;
+
+    if (!contractAddress) {
+      return res.status(400).json({
+        success: false,
+        message: '合约地址不能为空'
+      });
+    }
+
+    // 获取当前使用的 API Key
+    const apiKey = bscService.getCurrentApiKey();
+    // 简化日志输出，只保留必要信息
+    console.log(`获取合约创建者 - 地址: ${contractAddress.substring(0, 10)}..., API Key: ${apiKey.substring(0, 6)}...`);
+
+    try {
+      // 只获取合约创建者信息
+      const creator = await bscService.getContractCreator(contractAddress);
+
+      // 简化日志输出
+      if (Array.isArray(creator) && creator.length > 0) {
+        console.log(`合约 ${contractAddress.substring(0, 10)}... 创建者: ${creator[0].contractCreator.substring(0, 10)}...`);
+      } else {
+        console.log(`未找到合约 ${contractAddress.substring(0, 10)}... 的创建者`);
+      }
+
+      // 获取当前使用的 API Key 和 API 提供商
+      const apiProvider = bscService.getCurrentApiProvider();
+
+      return res.json({
+        success: true,
+        result: {
+          creator
+        },
+        apiKey: apiKey.substring(0, 10) + '...',
+        provider: apiProvider
+      });
+    } catch (error) {
+      console.error(`获取合约 ${contractAddress} 创建者信息失败:`, error);
+
+      // 返回部分信息，而不是完全失败
+      return res.json({
+        success: true,
+        result: {
+          creator: []
+        }
+      });
+    }
+  } catch (error) {
+    console.error('获取合约创建者信息失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '获取合约创建者信息失败: ' + error.message
+    });
+  }
+});
+
+// 批量获取合约创建者信息的接口
+router.post('/contract-creators-batch', async (req, res) => {
+  try {
+    // 检查是否启用了代币销毁验证功能
+    if (config.burnVerification.enabled) {
+      // 检查会话状态
+      if (!req.session.burnVerified) {
+        console.log('警告: 会话验证未通过，但暂时允许请求继续，用于调试');
+      }
+    }
+
+    const { contractAddresses, concurrentLimit = 1 } = req.body;
+
+    if (!contractAddresses || !Array.isArray(contractAddresses) || contractAddresses.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: '合约地址数组不能为空'
+      });
+    }
+
+    // 使用配置中的 API Key 数量和并发限制计算最佳并发数
+    const apiKeyCount = config.bscScan.apiKeys.length;
+    // 每个 API Key 每秒可以处理 5 个请求，所以最大并发数是 API Key 数量 * 5
+    const maxSafeConcurrent = apiKeyCount * 5;
+    // 使用较小的值作为实际并发限制
+    const actualConcurrentLimit = Math.min(concurrentLimit, maxSafeConcurrent);
+
+    console.log(`批量获取 ${contractAddresses.length} 个合约的创建者信息，API Key 数量: ${apiKeyCount}, 理论最大并发: ${maxSafeConcurrent}, 实际并发限制: ${actualConcurrentLimit}`);
+
+    // 结果对象
+    const results = {};
+    // 成功计数
+    let successCount = 0;
+
+    // 如果并发限制大于1，使用并发处理
+    if (actualConcurrentLimit > 1) {
+      // 创建一个队列，用于并发查询
+      const queue = [...contractAddresses];
+      const activePromises = [];
+
+      // 处理单个合约的创建者信息
+      const processContract = async (address) => {
+        try {
+          // 获取合约创建者信息
+          const creator = await bscService.getContractCreator(address);
+
+          // 保存结果
+          results[address] = {
+            success: true,
+            creator
+          };
+
+          // 增加成功计数
+          if (Array.isArray(creator) && creator.length > 0) {
+            successCount++;
+          }
+        } catch (error) {
+          console.error(`获取合约 ${address} 创建者信息失败:`, error);
+
+          // 保存错误信息
+          results[address] = {
+            success: false,
+            error: error.message
+          };
+        }
+      };
+
+      // 处理队列
+      await new Promise(resolve => {
+        const processQueue = async () => {
+          // 如果队列为空，等待所有活动的Promise完成后返回
+          if (queue.length === 0 && activePromises.length === 0) {
+            resolve();
+            return;
+          }
+
+          // 如果队列不为空，并且活动的Promise数量小于实际并发限制，启动新的查询
+          while (queue.length > 0 && activePromises.length < actualConcurrentLimit) {
+            const address = queue.shift();
+
+            // 创建一个新的Promise，处理完成后从活动Promise列表中移除
+            const promise = processContract(address).finally(() => {
+              const index = activePromises.indexOf(promise);
+              if (index !== -1) {
+                activePromises.splice(index, 1);
+              }
+
+              // 继续处理队列
+              processQueue();
+            });
+
+            // 添加到活动Promise列表
+            activePromises.push(promise);
+          }
+        };
+
+        // 开始处理队列
+        processQueue();
+      });
+    } else {
+      // 按顺序处理每个合约地址
+      for (const address of contractAddresses) {
+        try {
+          // 获取合约创建者信息
+          const creator = await bscService.getContractCreator(address);
+
+          // 保存结果
+          results[address] = {
+            success: true,
+            creator
+          };
+
+          // 增加成功计数
+          if (Array.isArray(creator) && creator.length > 0) {
+            successCount++;
+          }
+        } catch (error) {
+          console.error(`获取合约 ${address} 创建者信息失败:`, error);
+
+          // 保存错误信息
+          results[address] = {
+            success: false,
+            error: error.message
+          };
+        }
+      }
+    }
+
+    console.log(`批量获取合约创建者信息完成，成功: ${successCount}/${contractAddresses.length}`);
+
+    return res.json({
+      success: true,
+      results,
+      totalCount: contractAddresses.length,
+      successCount
+    });
+  } catch (error) {
+    console.error('批量获取合约创建者信息失败:', error);
+    return res.status(500).json({
+      success: false,
+      message: '批量获取合约创建者信息失败: ' + error.message
+    });
+  }
+});
+
 module.exports = router;
-
-
 

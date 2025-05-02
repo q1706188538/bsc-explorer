@@ -55,8 +55,9 @@ class BSCService {
 
       const response = await axios.get(url.toString());
 
-      // 轮换到下一个 API 密钥
+      // 每次请求后立即轮换 API 密钥，以最大化利用多个 API Key
       this.getNextApiKey();
+      console.log(`轮换到下一个 API 密钥: ${this.getCurrentApiKey().substring(0, 10)}...`);
 
       // 打印完整响应，用于调试
       //console.log(`BSCScan API 响应 (${module}.${action}): ${JSON.stringify(response.data, null, 2)}, 当前使用的API Key: ${apiKey.substring(0, 5)}..., 参数: ${JSON.stringify(params)}`);
@@ -98,6 +99,11 @@ class BSCService {
       return response.data.result;
     } catch (error) {
       console.error(`调用 BSCScan API 失败 (${module}.${action}):`, error);
+
+      // 在发生错误时轮换 API Key
+      console.log('发生错误，轮换到下一个 API 密钥');
+      this.getNextApiKey();
+      this.requestCount = 0;
 
       // 返回适当的默认值，而不是抛出错误
       if (module === 'contract') {
@@ -553,7 +559,9 @@ class BSCService {
   // 获取合约 ABI
   async getContractABI(contractAddress) {
     try {
-      console.log(`获取合约 ABI: ${contractAddress}`);
+      // 获取当前API Key
+      const apiKey = this.getCurrentApiKey();
+      console.log(`获取合约 ABI - 合约地址: ${contractAddress}, API Key: ${apiKey.substring(0, 10)}..., API 提供商: ${this.getCurrentApiProvider()}`);
 
       const abi = await this.callBscScanApi('contract', 'getabi', {
         address: contractAddress
@@ -586,7 +594,9 @@ class BSCService {
   // 获取合约源代码
   async getContractSourceCode(contractAddress) {
     try {
-      console.log(`获取合约源代码: ${contractAddress}`);
+      // 获取当前API Key
+      const apiKey = this.getCurrentApiKey();
+      console.log(`获取合约源代码 - 合约地址: ${contractAddress}, API Key: ${apiKey.substring(0, 10)}..., API 提供商: ${this.getCurrentApiProvider()}`);
 
       const sourceCode = await this.callBscScanApi('contract', 'getsourcecode', {
         address: contractAddress
@@ -617,27 +627,23 @@ class BSCService {
     try {
       // 获取当前API Key
       const apiKey = this.getCurrentApiKey();
-      console.log(`获取合约创建者信息: ${contractAddress}, 使用API Key: ${apiKey.substring(0, 5)}...`);
+      // 简化日志输出，只保留必要信息
+      console.log(`获取合约创建者: ${contractAddress.substring(0, 10)}..., API Key: ${apiKey.substring(0, 6)}...`);
 
       const creationInfo = await this.callBscScanApi('contract', 'getcontractcreation', {
         contractaddresses: contractAddress
       });
 
-      // 检查创建者信息是否有效
+      // 简化日志输出，只在调试模式下输出详细信息
       if (Array.isArray(creationInfo) && creationInfo.length > 0) {
-        console.log(`合约 ${contractAddress} 创建者信息获取成功:`);
-        console.log('创建者:', creationInfo[0].contractCreator);
-        console.log('创建交易:', creationInfo[0].txHash);
-        //console.log(`当前查询的合约地址: ${contractAddress}, 当前使用的API Key: ${this.getCurrentApiKey().substring(0, 5)}...`);
+        console.log(`合约 ${contractAddress.substring(0, 10)}... 创建者: ${creationInfo[0].contractCreator.substring(0, 10)}...`);
       } else {
-        console.log(`未找到合约 ${contractAddress} 的创建者信息`);
-        //console.log(`当前查询的合约地址: ${contractAddress}, 当前使用的API Key: ${this.getCurrentApiKey().substring(0, 5)}...`);
+        console.log(`未找到合约 ${contractAddress.substring(0, 10)}... 的创建者`);
       }
 
       return creationInfo;
     } catch (error) {
-      console.error(`获取合约 ${contractAddress} 创建者信息失败:`, error);
-      //console.log(`当前查询的合约地址: ${contractAddress}, 当前使用的API Key: ${this.getCurrentApiKey().substring(0, 5)}...`);
+      console.error(`获取合约 ${contractAddress.substring(0, 10)}... 创建者失败:`, error.message);
       return [];
     }
   }
@@ -645,7 +651,9 @@ class BSCService {
   // 获取合约信息
   async getContractInfo(contractAddress) {
     try {
-      console.log(`获取合约信息: ${contractAddress}`);
+      // 获取当前使用的 API Key
+      const apiKey = this.getCurrentApiKey();
+      console.log(`获取合约信息 - 合约地址: ${contractAddress}, API Key: ${apiKey.substring(0, 10)}..., API 提供商: ${this.getCurrentApiProvider()}`);
 
       // 获取合约 ABI
       const abi = await this.getContractABI(contractAddress);

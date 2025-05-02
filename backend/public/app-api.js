@@ -23,23 +23,19 @@ class ApiService {
     // 加载配置
     async loadConfig() {
         try {
-            console.log('从后端加载配置...');
             const response = await fetch(`${this.API_BASE_URL}/config`);
             if (!response.ok) {
                 throw new Error(`HTTP错误: ${response.status}`);
             }
 
             const config = await response.json();
-            console.log('配置加载成功:', config);
 
             // 设置并发限制
             if (config.bscScan && config.bscScan.maxConcurrent) {
                 this.maxConcurrent = config.bscScan.maxConcurrent;
-                console.log(`设置并发限制为: ${this.maxConcurrent}`);
             }
         } catch (error) {
-            console.error('加载配置失败:', error);
-            console.log('使用默认配置');
+            // 使用默认配置
         }
     }
 
@@ -58,8 +54,6 @@ class ApiService {
                 options.body = JSON.stringify(data);
             }
 
-            console.log(`调用 API: ${this.API_BASE_URL}${endpoint}`, method, data);
-
             const response = await fetch(`${this.API_BASE_URL}${endpoint}`, options);
             const result = await response.json();
 
@@ -69,7 +63,6 @@ class ApiService {
 
             return result;
         } catch (error) {
-            console.error('API 调用失败:', error);
             throw error;
         }
     }
@@ -106,11 +99,8 @@ class ApiService {
             // 检查缓存
             const cacheKey = `${address}_${page}_${pageSize}`;
             if (this.transactionsCache[cacheKey]) {
-                console.log(`从缓存获取交易记录: ${cacheKey}`);
                 return this.transactionsCache[cacheKey];
             }
-
-            console.log('===== 开始获取交易记录 =====');
 
             // 获取普通交易记录
             const normalTxResponse = await this.callApi('/transactions', 'POST', {
@@ -125,9 +115,6 @@ class ApiService {
                 page,
                 offset: pageSize
             });
-
-            console.log(`普通交易API返回了 ${normalTxResponse.result ? normalTxResponse.result.length : 0} 条交易记录`);
-            console.log(`代币交易API返回了 ${tokenTxResponse.result ? tokenTxResponse.result.length : 0} 条交易记录`);
 
             // 处理普通交易记录
             const normalTransactions = normalTxResponse.result ? normalTxResponse.result.map(tx => {
@@ -155,7 +142,6 @@ class ApiService {
                     }
                 });
             }
-            console.log(`发现 ${tokenContracts.size} 个代币合约地址`);
 
             // 初始化合约与交易的关联信息
             this.contractTransactions = this.contractTransactions || {};
@@ -177,7 +163,6 @@ class ApiService {
                 // 记录代币信息
                 if (tx.contractAddress) {
                     const contractAddr = tx.contractAddress.toLowerCase();
-                    console.log(`代币交易 ${tx.hash} 包含代币信息: ${tx.tokenName || 'Unknown'} (${tx.tokenSymbol || 'UNKNOWN'}), 合约: ${tx.contractAddress || 'Unknown'}`);
 
                     // 将代币信息添加到代币合约列表
                     if (!this.tokenContracts[contractAddr]) {
@@ -189,7 +174,7 @@ class ApiService {
                         if (!tokenSymbol) tokenSymbol = 'UNKNOWN';
                         if (!tokenName) tokenName = 'Unknown Token';
 
-                        console.log(`添加代币合约: ${tx.contractAddress}, 名称: ${tokenName}, 符号: ${tokenSymbol}`);
+
 
                         this.tokenContracts[contractAddr] = {
                             address: tx.contractAddress,
@@ -234,44 +219,14 @@ class ApiService {
                 return tx;
             }) : [];
 
-            // 输出样本交易记录详细信息
-            if (normalTransactions.length > 0 || tokenTransactions.length > 0) {
-                // 只输出前3条记录的详细信息，避免日志过多
-                const sampleNormalTxs = normalTransactions.slice(0, 1);
-                const sampleTokenTxs = tokenTransactions.slice(0, 2);
 
-                console.log('样本交易记录详细信息:');
-
-                // 输出普通交易样本
-                sampleNormalTxs.forEach((tx, index) => {
-                    console.log(`--- 普通交易 ${index + 1} ---`);
-                    console.log('交易完整信息:');
-                    for (const [key, value] of Object.entries(tx)) {
-                        console.log(`${key}: ${value}`);
-                    }
-                    console.log('-------------------');
-                });
-
-                // 输出代币交易样本
-                sampleTokenTxs.forEach((tx, index) => {
-                    console.log(`--- 代币交易 ${index + 1} ---`);
-                    console.log('交易完整信息:');
-                    for (const [key, value] of Object.entries(tx)) {
-                        console.log(`${key}: ${value}`);
-                    }
-                    console.log('-------------------');
-                });
-            } else {
-                console.log('API未返回交易记录或返回数据格式不正确');
-            }
 
             // 合并交易记录并按时间戳排序
             const allTransactions = [...normalTransactions, ...tokenTransactions].sort((a, b) =>
                 parseInt(b.timeStamp) - parseInt(a.timeStamp)
             );
 
-            console.log(`合并后共有 ${allTransactions.length} 条交易记录`);
-            console.log('===== 交易记录获取完成 =====');
+
 
             // 创建分页信息
             const result = {
@@ -290,7 +245,6 @@ class ApiService {
 
             return result;
         } catch (error) {
-            console.error('获取交易记录失败:', error);
             throw error;
         }
     }
@@ -321,7 +275,7 @@ class ApiService {
             this.createdContracts = {};
         }
 
-        console.log('缓存已清除', address, clearTokenContracts);
+
     }
 
     // 设置当前查询地址
@@ -332,43 +286,14 @@ class ApiService {
     // 获取合约信息
     async getContractInfo(contractAddress, currentQueryAddress = null) {
         try {
-            console.log(`获取合约信息: ${contractAddress}`);
+            // 发送请求
             const response = await this.callApi('/contract-info', 'POST', { contractAddress });
-
-            // 打印响应，帮助调试
-            console.log(`合约信息响应 - 合约地址: ${contractAddress}`);
-
-            // 检查响应中是否包含 API 提供商信息
-            if (response.provider) {
-                console.log(`API 提供商: ${response.provider}`);
-            }
-
-            // 检查响应中是否包含 API Key 信息
-            if (response.apiKey) {
-                console.log(`API Key: ${response.apiKey}`);
-            }
-
-            // 打印响应的主要部分
-            console.log('合约信息详情:', JSON.stringify({
-                success: response.success,
-                error: response.error,
-                result: response.result ? {
-                    abi: response.result.abi ? '有 ABI' : '无 ABI',
-                    sourceCode: response.result.sourceCode ? '有源代码' : '无源代码',
-                    creator: response.result.creator,
-                    bytecodeSize: response.result.bytecodeSize,
-                    balance: response.result.balance,
-                    totalSupply: response.result.totalSupply,
-                    isToken: response.result.isToken
-                } : null
-            }, null, 2));
 
             // 处理合约信息
             const contractInfo = response.result;
 
             // 检查响应是否包含必要的字段
             if (!contractInfo) {
-                console.error('合约信息响应中没有 result 字段');
                 return {
                     address: contractAddress,
                     balance: 'Unknown',
@@ -395,13 +320,11 @@ class ApiService {
                             try {
                                 JSON.parse(contractInfo.abi);
                             } catch (e) {
-                                console.error('解析 ABI 失败:', e);
                                 abiMessage = '无法解析 ABI';
                             }
                         }
                     }
                 } catch (error) {
-                    console.error('处理 ABI 失败:', error);
                     abiMessage = '处理 ABI 时出错';
                 }
             } else {
@@ -453,7 +376,7 @@ class ApiService {
                         }
                     }
                 } catch (error) {
-                    console.error('检查代币合约失败:', error);
+                    // 忽略错误
                 }
             }
 
@@ -518,8 +441,6 @@ class ApiService {
                 } : null
             };
         } catch (error) {
-            console.error('获取合约信息失败:', error);
-
             // 返回错误信息
             return {
                 address: contractAddress,
@@ -542,17 +463,12 @@ class ApiService {
 
     // 更新所有代币合约的名称和符号
     updateAllTokenContractNames() {
-        console.log('开始更新所有代币合约的名称和符号...');
-
         // 获取所有代币合约
         const contracts = Object.values(this.tokenContracts || {});
 
         if (contracts.length === 0) {
-            console.log('没有代币合约需要更新');
             return;
         }
-
-        console.log(`共有 ${contracts.length} 个代币合约需要更新`);
 
         // 遍历所有合约，更新名称和符号
         for (const contract of contracts) {
@@ -562,7 +478,7 @@ class ApiService {
             if (contract.tokenName && contract.tokenSymbol) {
                 contract.name = contract.tokenName;
                 contract.symbol = contract.tokenSymbol;
-                console.log(`更新合约 ${contractAddr} 的名称和符号: ${contract.name} (${contract.symbol})`);
+
                 continue;
             }
 
@@ -574,7 +490,7 @@ class ApiService {
                     if (tx.tokenName && tx.tokenSymbol) {
                         contract.name = tx.tokenName;
                         contract.symbol = tx.tokenSymbol;
-                        console.log(`从交易记录中获取合约 ${contractAddr} 的名称和符号: ${contract.name} (${contract.symbol})`);
+
                         break;
                     }
                 }
@@ -598,12 +514,12 @@ class ApiService {
                                 if (tx.tokenName && tx.tokenSymbol) {
                                     if (tx.tokenName !== 'Unknown Token') {
                                         contract.name = tx.tokenName;
-                                        console.log(`从交易缓存中更新合约 ${contractAddr} 的名称: ${contract.name}`);
+
                                     }
 
                                     if (tx.tokenSymbol !== 'UNKNOWN') {
                                         contract.symbol = tx.tokenSymbol;
-                                        console.log(`从交易缓存中更新合约 ${contractAddr} 的符号: ${contract.symbol}`);
+
                                     }
 
                                     foundTokenInfo = true;
@@ -618,29 +534,27 @@ class ApiService {
             // 如果仍然没有名称和符号，使用标准的未知值
             if (!contract.name) {
                 contract.name = 'Unknown Token';
-                console.log(`合约 ${contractAddr} 使用标准未知名称: ${contract.name}`);
+
             }
 
             if (!contract.symbol) {
                 contract.symbol = 'UNKNOWN';
-                console.log(`合约 ${contractAddr} 使用标准未知符号: ${contract.symbol}`);
+
             }
         }
 
-        console.log('所有代币合约的名称和符号更新完成');
+
     }
 
     // 获取由当前地址创建的合约
     async getCreatedContracts() {
         // 如果没有当前查询地址，返回空对象
         if (!this.currentQueryAddress) {
-            console.log('没有当前查询地址，无法获取创建的合约');
             return {};
         }
 
         // 如果已经有缓存的创建合约，直接返回
         if (Object.keys(this.createdContracts).length > 0) {
-            console.log(`返回缓存的创建合约: ${Object.keys(this.createdContracts).length} 个`);
             return this.createdContracts;
         }
 
@@ -650,14 +564,11 @@ class ApiService {
         // 遍历所有代币合约，检查创建者是否是当前地址
         const currentAddress = this.currentQueryAddress.toLowerCase();
 
-        console.log(`检查由地址 ${currentAddress} 创建的合约...`);
-        console.log(`当前有 ${Object.keys(this.tokenContracts).length} 个代币合约`);
-
         // 遍历所有代币合约
         for (const [contractAddress, contract] of Object.entries(this.tokenContracts)) {
             // 如果合约有创建者信息，并且创建者是当前地址
             if (contract.creator && contract.creator.toLowerCase() === currentAddress) {
-                console.log(`找到由当前地址创建的合约: ${contractAddress}`);
+
 
                 // 标记为由当前地址创建
                 contract.createdByCurrentAddress = true;
@@ -672,7 +583,7 @@ class ApiService {
             }
         }
 
-        console.log(`共找到 ${Object.keys(this.createdContracts).length} 个由当前地址创建的合约`);
+
 
         return this.createdContracts;
     }
@@ -726,7 +637,7 @@ class ApiService {
                                 tokenSymbol: tx.tokenSymbol
                             }]
                         };
-                        console.log(`从交易记录中添加代币合约: ${address}, 名称: ${tx.tokenName || 'Unknown Token'}, 符号: ${tx.tokenSymbol || 'UNKNOWN'}`);
+                        //console.log(`从交易记录中添加代币合约: ${address}, 名称: ${tx.tokenName || 'Unknown Token'}, 符号: ${tx.tokenSymbol || 'UNKNOWN'}`);
                     }
                 }
 
@@ -741,7 +652,7 @@ class ApiService {
                     // 如果有多个合约调用，这很可能是一个合约
                     // 但我们不会自动将其标记为代币合约，除非有明确的证据
                     if (contractCalls.length >= 3) {
-                        console.log(`地址 ${address} 有 ${contractCalls.length} 个合约调用，可能是合约但不一定是代币合约`);
+                        //console.log(`地址 ${address} 有 ${contractCalls.length} 个合约调用，可能是合约但不一定是代币合约`);
                     }
                 }
             }
@@ -797,7 +708,7 @@ class ApiService {
                                 tokenSymbol: tx.tokenSymbol
                             }]
                         };
-                        console.log(`从交易记录中添加代币合约: ${address}, 名称: ${tx.tokenName || 'Unknown Token'}, 符号: ${tx.tokenSymbol || 'UNKNOWN'}`);
+                        //console.log(`从交易记录中添加代币合约: ${address}, 名称: ${tx.tokenName || 'Unknown Token'}, 符号: ${tx.tokenSymbol || 'UNKNOWN'}`);
                     }
                 }
             }
@@ -840,20 +751,62 @@ class ApiService {
         return this.contractCreatorsQueryProgress;
     }
 
+    // 只获取合约创建者信息
+    async getContractCreator(contractAddress) {
+        try {
+            // 调用新的接口，只获取创建者信息
+            const response = await this.callApi('/contract-creator', 'POST', { contractAddress });
+
+            if (response.success && response.result && response.result.creator) {
+                const creator = response.result.creator;
+
+                // 提取创建者地址
+                let creatorAddress = 'Unknown';
+                if (Array.isArray(creator) && creator.length > 0 && creator[0].contractCreator) {
+                    creatorAddress = creator[0].contractCreator;
+                }
+
+                return {
+                    creator: creatorAddress
+                };
+            } else {
+                return {
+                    creator: 'Unknown'
+                };
+            }
+        } catch (error) {
+            return {
+                creator: 'Error'
+            };
+        }
+    }
+
+    // 批量获取合约创建者信息
+    async getContractCreatorsBatch(contractAddresses) {
+        try {
+            // 调用批量接口
+            const response = await this.callApi('/contract-creators-batch', 'POST', {
+                contractAddresses,
+                concurrentLimit: this.maxConcurrent // 传递并发限制到后端
+            });
+
+            if (response.success && response.results) {
+                return response.results;
+            } else {
+                return {};
+            }
+        } catch (error) {
+            return {};
+        }
+    }
+
     // 查询所有合约创建者信息
     async queryAllContractCreators() {
         // 获取所有代币合约
         const contractAddresses = Object.keys(this.tokenContracts);
 
-        // 打印当前的代币合约列表，用于调试
-        console.log('查询合约创建者信息前的代币合约列表:');
-        Object.entries(this.tokenContracts).forEach(([address, contract]) => {
-            console.log(`- ${address}: ${contract.name} (${contract.symbol})`);
-        });
-
         // 如果没有合约，直接返回
         if (contractAddresses.length === 0) {
-            console.log('没有代币合约，无需查询创建者信息');
             return;
         }
 
@@ -865,13 +818,10 @@ class ApiService {
             withCreator: 0
         };
 
-        console.log(`开始查询 ${contractAddresses.length} 个合约的创建者信息...`);
-
         // 创建一个队列，用于并发查询
         const queue = [...contractAddresses];
-        // 使用从配置中获取的并发限制，默认为3
-        const concurrentLimit = this.maxConcurrent || 3;
-        console.log(`使用并发限制: ${concurrentLimit}`);
+        // 使用从配置中获取的并发限制
+        const concurrentLimit = this.maxConcurrent || 1;
         const activePromises = [];
 
         // 处理单个合约的创建者信息
@@ -879,27 +829,21 @@ class ApiService {
             try {
                 // 如果合约已经有创建者信息，跳过查询
                 if (this.tokenContracts[contractAddress].creator) {
-                    console.log(`合约 ${contractAddress} 已有创建者信息，跳过查询`);
                     this.contractCreatorsQueryProgress.completed++;
                     this.contractCreatorsQueryProgress.withCreator++;
                     return;
                 }
 
-                console.log(`查询合约 ${contractAddress} 的创建者信息...`);
-
-                // 查询合约信息
-                const contractInfo = await this.getContractInfo(contractAddress, this.currentQueryAddress);
+                // 使用新方法，只获取创建者信息
+                const contractInfo = await this.getContractCreator(contractAddress);
 
                 // 更新合约信息
                 if (contractInfo && contractInfo.creator && contractInfo.creator !== 'Unknown' && contractInfo.creator !== 'Error') {
-                    console.log(`获取到合约 ${contractAddress} 的创建者信息: ${contractInfo.creator}`);
-
                     // 更新代币合约信息
                     this.tokenContracts[contractAddress].creator = contractInfo.creator;
 
                     // 检查是否由当前地址创建
                     if (this.currentQueryAddress && contractInfo.creator.toLowerCase() === this.currentQueryAddress.toLowerCase()) {
-                        console.log(`合约 ${contractAddress} 由当前地址创建`);
                         this.tokenContracts[contractAddress].createdByCurrentAddress = true;
 
                         // 添加到创建合约缓存
@@ -908,16 +852,12 @@ class ApiService {
 
                     // 更新进度
                     this.contractCreatorsQueryProgress.withCreator++;
-                } else {
-                    console.log(`未获取到合约 ${contractAddress} 的创建者信息`);
                 }
 
                 // 更新进度
                 this.contractCreatorsQueryProgress.completed++;
 
             } catch (error) {
-                console.error(`查询合约 ${contractAddress} 的创建者信息失败:`, error);
-
                 // 更新进度
                 this.contractCreatorsQueryProgress.completed++;
             }
@@ -928,7 +868,6 @@ class ApiService {
             const processQueue = async () => {
                 // 如果队列为空，等待所有活动的Promise完成后返回
                 if (queue.length === 0 && activePromises.length === 0) {
-                    console.log('所有合约创建者信息查询完成');
                     this.contractCreatorsQueryProgress.isQuerying = false;
 
                     // 更新所有代币合约的名称和符号
@@ -955,11 +894,6 @@ class ApiService {
 
                     // 添加到活动Promise列表
                     activePromises.push(promise);
-                }
-
-                // 如果队列为空，但还有活动的Promise，等待它们完成
-                if (queue.length === 0 && activePromises.length > 0) {
-                    // 不需要做任何事情，活动的Promise完成后会调用processQueue
                 }
             };
 
