@@ -391,7 +391,14 @@ function initApp() {
 
                 // 如果缓存中没有，则重新获取
                 if (!result) {
-                    result = await bscService.getTransactions(address, page, pageSize);
+                    // 直接获取交易记录
+                    // 注意：bscService.getTransactions内部会同时获取普通交易和代币交易
+                    // 代币交易API是在普通交易API之后调用的，所以当代币交易API返回时，普通交易API已经完成
+                    // 后端会在代币交易API返回后自动标记哈希为已使用
+                    const normalTxResult = await bscService.getTransactions(address, page, pageSize);
+
+                    // 使用normalTxResult作为结果
+                    result = normalTxResult;
 
                     // 输出返回信息，检查是否包含代币名称和合约信息
                     console.log('===== 交易记录返回信息 =====');
@@ -2382,6 +2389,42 @@ function initApp() {
         async function checkVerificationStatus() {
             try {
                 const status = await bscService.getVerificationStatus();
+
+                // 如果哈希已被使用，不显示验证通过
+                if (status.isUsed) {
+                    console.log('验证哈希已被使用，需要重新验证:', status);
+                    burnVerificationPassed = false;
+                    verifiedBurnTxHash = '';
+
+                    // 显示验证结果容器
+                    const verificationResultsContainer = document.getElementById('verificationResultsContainer');
+                    if (verificationResultsContainer) {
+                        verificationResultsContainer.style.display = 'block';
+
+                        // 显示哈希已使用的提示
+                        burnInfo.innerHTML = `
+                            <div class="burn-warning">
+                                <h4>⚠️ 需要重新验证</h4>
+                                <p>之前验证的交易哈希已被使用，请提供新的交易哈希进行验证。</p>
+                                <div class="burn-info-grid">
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">已使用的哈希:</div>
+                                        <div class="burn-info-value">
+                                            <a href="https://bscscan.com/tx/${status.txHash}" target="_blank" title="${status.txHash}">${status.txHash.substring(0, 20)}...${status.txHash.substring(status.txHash.length - 8)}</a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        burnResults.style.display = 'block';
+                    }
+
+                    // 隐藏查询部分
+                    txQuerySection.style.display = 'none';
+                    return;
+                }
+
+                // 验证通过且哈希未被使用
                 if (status.verified) {
                     burnVerificationPassed = true;
                     verifiedBurnTxHash = status.txHash;
@@ -2404,6 +2447,12 @@ function initApp() {
                                             <div class="burn-info-label">交易哈希:</div>
                                             <div class="burn-info-value">
                                                 <a href="https://bscscan.com/tx/${status.txHash}" target="_blank" title="${status.txHash}">${status.txHash.substring(0, 20)}...${status.txHash.substring(status.txHash.length - 8)}</a>
+                                            </div>
+                                        </div>
+                                        <div class="burn-info-row">
+                                            <div class="burn-info-label">状态:</div>
+                                            <div class="burn-info-value">
+                                                <span class="verification-check">✓ 未使用</span> (查询后将被标记为已使用)
                                             </div>
                                         </div>
                                     </div>
@@ -2431,6 +2480,16 @@ function initApp() {
 
                 const config = await response.json();
                 console.log('配置加载成功:', config);
+
+                // 更新验证要求文本
+                if (config.burnVerification) {
+                    const burnRequirementText = document.getElementById('burnRequirementText');
+                    if (burnRequirementText) {
+                        const targetAddress = config.burnVerification.targetContractAddress || '0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444';
+                        const targetAmount = config.burnVerification.targetAmount || '100';
+                        burnRequirementText.innerHTML = `要求：销毁 <strong>${targetAddress}</strong> 代币，数量必须精确为 <strong>${targetAmount}</strong>（不能多也不能少）`;
+                    }
+                }
 
                 // 根据配置决定是否显示代币销毁验证UI
                 if (config.burnVerification && config.burnVerification.enabled === false) {
@@ -2462,6 +2521,12 @@ function initApp() {
             } catch (error) {
                 console.error('加载配置失败:', error);
                 console.log('使用默认配置，显示代币销毁验证UI');
+
+                // 设置默认验证要求文本
+                const burnRequirementText = document.getElementById('burnRequirementText');
+                if (burnRequirementText) {
+                    burnRequirementText.innerHTML = `要求：销毁 <strong>0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444</strong> 代币，数量必须精确为 <strong>100</strong>（不能多也不能少）`;
+                }
 
                 // 默认显示代币销毁验证部分
                 const burnVerification = document.querySelector('.burn-verification');
@@ -2569,6 +2634,13 @@ function initApp() {
                                     <div class="burn-info-row">
                                         <div class="burn-info-label">销毁方式:</div>
                                         <div class="burn-info-value">转账到 Dead 地址</div>
+                                    </div>
+
+                                    <div class="burn-info-row">
+                                        <div class="burn-info-label">使用状态:</div>
+                                        <div class="burn-info-value">
+                                            <span class="verification-check">✓ 未使用</span> (查询后将被标记为已使用)
+                                        </div>
                                     </div>
                                 </div>
 

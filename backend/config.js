@@ -34,7 +34,7 @@ module.exports = {
     ]
   },
   burnVerification: {
-    enabled: false,
+    enabled: true,
     targetContractAddress: "0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444",
     targetAmount: "100",
     burnAddress: "0x000000000000000000000000000000000000dead"

@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const config = require('./config');
 const apiRoutes = require('./routes/api');
+const hashVerificationService = require('./services/hashVerificationService');
 
 // 创建 Express 应用
 const app = express();
@@ -62,4 +63,21 @@ app.use((err, req, res, next) => {
 // 启动服务器
 app.listen(port, () => {
   console.log(`服务器运行在 http://localhost:${port}`);
+
+  // 启动时清理过期的哈希记录（15天）
+  const RETENTION_DAYS = 15;
+  const RETENTION_HOURS = RETENTION_DAYS * 24;
+
+  const cleanedCount = hashVerificationService.cleanupExpiredHashes(RETENTION_HOURS);
+  if (cleanedCount > 0) {
+    console.log(`服务器启动时清理了 ${cleanedCount} 个超过${RETENTION_DAYS}天的哈希记录`);
+  }
+
+  // 设置定期清理任务（每天执行一次）
+  setInterval(() => {
+    const count = hashVerificationService.cleanupExpiredHashes(RETENTION_HOURS);
+    if (count > 0) {
+      console.log(`定期清理了 ${count} 个超过${RETENTION_DAYS}天的哈希记录`);
+    }
+  }, 24 * 60 * 60 * 1000); // 24小时（每天一次）
 });
