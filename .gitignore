@@ -2,7 +2,8 @@
 node_modules/
 
 # 数据文件
-backend/data/
+# 允许上传data目录
+# backend/data/
 
 # 日志文件
 *.log
