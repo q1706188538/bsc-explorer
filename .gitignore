@@ -1,0 +1,31 @@
+# 依赖目录
+node_modules/
+
+# 数据文件
+backend/data/
+
+# 日志文件
+*.log
+开发日志.txt
+
+# 备份文件
+*.bak
+*.backup
+*.simplified
+
+# 环境变量
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# 编辑器配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
