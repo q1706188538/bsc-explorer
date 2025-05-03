@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const bscService = require('../services/bscService');
+const hashVerificationService = require('../services/hashVerificationService');
 const config = require('../config');
 
 console.log('Moralis 配置:', config.moralis ? {
@@ -22,16 +23,51 @@ router.post('/verify-burn', async (req, res) => {
       });
     }
 
+    // 检查哈希是否已经验证过
+    if (hashVerificationService.isHashVerified(txHash)) {
+      // 检查哈希是否已经被使用过
+      if (hashVerificationService.isHashUsed(txHash)) {
+        return res.status(400).json({
+          success: false,
+          message: '该交易哈希已被使用过，请提供新的交易哈希'
+        });
+      }
+
+      // 哈希已验证但未使用，可以继续使用
+      const hashDetails = hashVerificationService.getHashDetails(txHash);
+
+      // 设置会话
+      req.session.burnVerified = true;
+      req.session.verifiedTxHash = txHash;
+      req.session.burnFrom = hashDetails.from;
+
+      console.log(`哈希已验证但未使用，允许继续使用: ${txHash}`);
+
+      return res.json({
+        success: true,
+        result: {
+          isValidBurn: true,
+          from: hashDetails.from,
+          hash: txHash,
+          alreadyVerified: true
+        }
+      });
+    }
+
     // 调用 BSC 服务验证销毁
     const burnResult = await bscService.checkTokenBurn(txHash);
 
-    // 如果验证通过，设置会话
+    // 如果验证通过，记录哈希并设置会话
     if (burnResult.isValidBurn) {
+      // 添加到已验证哈希列表
+      hashVerificationService.addVerifiedHash(txHash, burnResult.from);
+
+      // 设置会话
       req.session.burnVerified = true;
       req.session.verifiedTxHash = txHash;
       req.session.burnFrom = burnResult.from;
 
-      console.log(`销毁验证通过，设置会话: ${JSON.stringify({
+      console.log(`销毁验证通过，记录哈希并设置会话: ${JSON.stringify({
         burnVerified: req.session.burnVerified,
         verifiedTxHash: req.session.verifiedTxHash,
         burnFrom: req.session.burnFrom
@@ -60,17 +96,29 @@ router.post('/verify-burn', async (req, res) => {
 
 // 获取验证状态
 router.get('/verification-status', (req, res) => {
+  const txHash = req.session.verifiedTxHash || '';
+  let isUsed = false;
+
+  // 如果有验证过的哈希，检查是否已使用
+  if (txHash) {
+    isUsed = hashVerificationService.isHashUsed(txHash);
+  }
+
   return res.json({
     success: true,
     verified: req.session.burnVerified || false,
-    txHash: req.session.verifiedTxHash || '',
-    from: req.session.burnFrom || ''
+    txHash: txHash,
+    from: req.session.burnFrom || '',
+    isUsed: isUsed
   });
 });
 
 // 获取交易记录
 router.post('/transactions', async (req, res) => {
   try {
+    // 初始化哈希变量
+    let txHash = null;
+
     // 检查是否启用了代币销毁验证功能
     if (config.burnVerification.enabled) {
       // 检查是否已验证销毁
@@ -80,24 +128,95 @@ router.post('/transactions', async (req, res) => {
           message: '请先验证代币销毁交易'
         });
       }
+
+      // 获取会话中的交易哈希
+      txHash = req.session.verifiedTxHash;
+
+      // 检查哈希状态
+      const hashStatus = hashVerificationService.getHashStatus(txHash);
+      console.log(`检查哈希 ${txHash} 状态: ${hashStatus}`);
+
+      if (hashStatus === 'used') {
+        // 清除会话
+        req.session.burnVerified = false;
+        delete req.session.verifiedTxHash;
+        delete req.session.burnFrom;
+
+        return res.status(403).json({
+          success: false,
+          message: '该交易哈希已被使用过，请提供新的交易哈希进行验证'
+        });
+      }
+
+      if (hashStatus === 'locked') {
+        // 检查是否已经初始化了API请求状态跟踪
+        const normalizedHash = hashVerificationService.normalizeHash(txHash);
+        const status = hashVerificationService.apiRequestStatus.get(normalizedHash);
+
+        // 如果已经初始化了API请求状态跟踪，允许继续查询
+        if (status) {
+          console.log(`哈希 ${txHash} 已锁定，但允许继续查询，因为已经初始化了API请求状态跟踪`);
+        } else {
+          return res.status(403).json({
+            success: false,
+            message: '该交易哈希正在处理中，请稍后再试'
+          });
+        }
+      }
+
+      // 锁定哈希，表示正在使用
+      if (hashStatus === 'verified') {
+        hashVerificationService.lockHash(txHash);
+        console.log(`哈希 ${txHash} 已锁定，标记为正在使用`);
+
+        // 初始化API请求状态跟踪
+        hashVerificationService.initApiRequestStatus(txHash);
+      }
     }
 
     const { address, page = 1, offset = 5000 } = req.body; // 增加到5000条，接近BSCScan API的最大限制
 
     if (!address) {
+      // 如果地址为空，解锁哈希
+      if (txHash) {
+        hashVerificationService.unlockHash(txHash);
+        console.log(`哈希 ${txHash} 已解锁，因为地址为空`);
+      }
+
       return res.status(400).json({
         success: false,
         message: '地址不能为空'
       });
     }
 
-    // 调用 BSC 服务获取交易记录
-    const transactions = await bscService.getTransactions(address, page, offset);
+    try {
+      // 调用 BSC 服务获取交易记录
+      const transactions = await bscService.getTransactions(address, page, offset);
 
-    return res.json({
-      success: true,
-      result: transactions
-    });
+      // 准备响应数据
+      const responseData = {
+        success: true,
+        result: transactions
+      };
+
+      // 发送响应
+      res.json(responseData);
+
+      // 标记普通交易API请求已完成
+      if (config.burnVerification.enabled && txHash) {
+        hashVerificationService.markNormalTxCompleted(txHash);
+        console.log(`哈希 ${txHash} 的普通交易API请求已完成，等待代币交易API请求完成`);
+      }
+    } catch (queryError) {
+      // 如果查询失败，解锁哈希并清理API请求状态
+      if (txHash) {
+        hashVerificationService.unlockHash(txHash);
+        hashVerificationService.cleanupApiRequestStatus(txHash);
+        console.log(`哈希 ${txHash} 已解锁并清理API请求状态，因为查询失败: ${queryError.message}`);
+      }
+
+      throw queryError; // 重新抛出错误，让外层 catch 处理
+    }
   } catch (error) {
     console.error('获取交易记录失败:', error);
     return res.status(500).json({
@@ -110,6 +229,9 @@ router.post('/transactions', async (req, res) => {
 // 获取代币转账记录
 router.post('/token-transfers', async (req, res) => {
   try {
+    // 初始化哈希变量
+    let txHash = null;
+
     // 检查是否启用了代币销毁验证功能
     if (config.burnVerification.enabled) {
       // 检查是否已验证销毁
@@ -119,35 +241,106 @@ router.post('/token-transfers', async (req, res) => {
           message: '请先验证代币销毁交易'
         });
       }
+
+      // 获取会话中的交易哈希
+      txHash = req.session.verifiedTxHash;
+
+      // 检查哈希状态
+      const hashStatus = hashVerificationService.getHashStatus(txHash);
+      console.log(`检查哈希 ${txHash} 状态: ${hashStatus}`);
+
+      if (hashStatus === 'used') {
+        // 清除会话
+        req.session.burnVerified = false;
+        delete req.session.verifiedTxHash;
+        delete req.session.burnFrom;
+
+        return res.status(403).json({
+          success: false,
+          message: '该交易哈希已被使用过，请提供新的交易哈希进行验证'
+        });
+      }
+
+      if (hashStatus === 'locked') {
+        // 检查是否已经初始化了API请求状态跟踪
+        const normalizedHash = hashVerificationService.normalizeHash(txHash);
+        const status = hashVerificationService.apiRequestStatus.get(normalizedHash);
+
+        // 如果已经初始化了API请求状态跟踪，允许继续查询
+        if (status) {
+          console.log(`哈希 ${txHash} 已锁定，但允许继续查询，因为已经初始化了API请求状态跟踪`);
+        } else {
+          return res.status(403).json({
+            success: false,
+            message: '该交易哈希正在处理中，请稍后再试'
+          });
+        }
+      }
+
+      // 锁定哈希，表示正在使用
+      if (hashStatus === 'verified') {
+        hashVerificationService.lockHash(txHash);
+        console.log(`哈希 ${txHash} 已锁定，标记为正在使用`);
+
+        // 初始化API请求状态跟踪
+        hashVerificationService.initApiRequestStatus(txHash);
+      }
     }
 
     const { address, page = 1, offset = 5000 } = req.body; // 增加到5000条，接近BSCScan API的最大限制
 
     if (!address) {
+      // 如果地址为空，解锁哈希
+      if (txHash) {
+        hashVerificationService.unlockHash(txHash);
+        console.log(`哈希 ${txHash} 已解锁，因为地址为空`);
+      }
+
       return res.status(400).json({
         success: false,
         message: '地址不能为空'
       });
     }
 
-    // 调用 BSC 服务获取代币转账记录
-    console.log(`获取代币转账记录: ${address}, 页码: ${page}, 每页数量: ${offset}`);
+    try {
+      // 调用 BSC 服务获取代币转账记录
+      console.log(`获取代币转账记录: ${address}, 页码: ${page}, 每页数量: ${offset}`);
 
-    const startTime = Date.now();
-    // 注意：bscService.getTokenTransfers 现在会自动选择使用 Moralis 或 BSCScan API
-    const transfers = await bscService.getTokenTransfers(address, page, offset);
-    const endTime = Date.now();
-    const duration = (endTime - startTime) / 1000;
+      const startTime = Date.now();
+      // 注意：bscService.getTokenTransfers 现在会自动选择使用 Moralis 或 BSCScan API
+      const transfers = await bscService.getTokenTransfers(address, page, offset);
+      const endTime = Date.now();
+      const duration = (endTime - startTime) / 1000;
 
-    console.log(`获取到 ${transfers.length} 条记录，耗时 ${duration.toFixed(2)} 秒，使用 API: ${bscService.getCurrentApiProvider()}`);
+      console.log(`获取到 ${transfers.length} 条记录，耗时 ${duration.toFixed(2)} 秒，使用 API: ${bscService.getCurrentApiProvider()}`);
 
-    return res.json({
-      success: true,
-      result: transfers,
-      provider: bscService.getCurrentApiProvider(),
-      count: transfers.length,
-      duration: duration.toFixed(2)
-    });
+      // 准备响应数据
+      const responseData = {
+        success: true,
+        result: transfers,
+        provider: bscService.getCurrentApiProvider(),
+        count: transfers.length,
+        duration: duration.toFixed(2)
+      };
+
+      // 发送响应
+      res.json(responseData);
+
+      // 标记代币交易API请求已完成
+      if (config.burnVerification.enabled && txHash) {
+        hashVerificationService.markTokenTxCompleted(txHash);
+        console.log(`哈希 ${txHash} 的代币交易API请求已完成，检查是否两个API都已完成`);
+      }
+    } catch (queryError) {
+      // 如果查询失败，解锁哈希并清理API请求状态
+      if (txHash) {
+        hashVerificationService.unlockHash(txHash);
+        hashVerificationService.cleanupApiRequestStatus(txHash);
+        console.log(`哈希 ${txHash} 已解锁并清理API请求状态，因为查询失败: ${queryError.message}`);
+      }
+
+      throw queryError; // 重新抛出错误，让外层 catch 处理
+    }
   } catch (error) {
     console.error('获取代币转账记录失败:', error);
     return res.status(500).json({
@@ -160,6 +353,9 @@ router.post('/token-transfers', async (req, res) => {
 // 专门从 Moralis 获取代币转账记录
 router.post('/moralis/token-transfers', async (req, res) => {
   try {
+    // 初始化哈希变量
+    let txHash = null;
+
     // 检查是否启用了代币销毁验证功能
     if (config.burnVerification.enabled) {
       // 检查是否已验证销毁
@@ -169,10 +365,60 @@ router.post('/moralis/token-transfers', async (req, res) => {
           message: '请先验证代币销毁交易'
         });
       }
+
+      // 获取会话中的交易哈希
+      txHash = req.session.verifiedTxHash;
+
+      // 检查哈希状态
+      const hashStatus = hashVerificationService.getHashStatus(txHash);
+      console.log(`检查哈希 ${txHash} 状态: ${hashStatus}`);
+
+      if (hashStatus === 'used') {
+        // 清除会话
+        req.session.burnVerified = false;
+        delete req.session.verifiedTxHash;
+        delete req.session.burnFrom;
+
+        return res.status(403).json({
+          success: false,
+          message: '该交易哈希已被使用过，请提供新的交易哈希进行验证'
+        });
+      }
+
+      if (hashStatus === 'locked') {
+        // 检查是否已经初始化了API请求状态跟踪
+        const normalizedHash = hashVerificationService.normalizeHash(txHash);
+        const status = hashVerificationService.apiRequestStatus.get(normalizedHash);
+
+        // 如果已经初始化了API请求状态跟踪，允许继续查询
+        if (status) {
+          console.log(`哈希 ${txHash} 已锁定，但允许继续查询，因为已经初始化了API请求状态跟踪`);
+        } else {
+          return res.status(403).json({
+            success: false,
+            message: '该交易哈希正在处理中，请稍后再试'
+          });
+        }
+      }
+
+      // 锁定哈希，表示正在使用
+      if (hashStatus === 'verified') {
+        hashVerificationService.lockHash(txHash);
+        console.log(`哈希 ${txHash} 已锁定，标记为正在使用`);
+
+        // 初始化API请求状态跟踪
+        hashVerificationService.initApiRequestStatus(txHash);
+      }
     }
 
     // 检查 Moralis 配置
     if (!config.moralis || !config.moralis.apiKey || config.moralis.enabled === false) {
+      // 如果 Moralis 配置无效，解锁哈希
+      if (txHash) {
+        hashVerificationService.unlockHash(txHash);
+        console.log(`哈希 ${txHash} 已解锁，因为 Moralis 配置无效`);
+      }
+
       return res.status(400).json({
         success: false,
         message: 'Moralis API 未配置或未启用'
@@ -182,6 +428,12 @@ router.post('/moralis/token-transfers', async (req, res) => {
     const { address, limit = 5000 } = req.body; // 目标记录数，将使用游标分页获取
 
     if (!address) {
+      // 如果地址为空，解锁哈希
+      if (txHash) {
+        hashVerificationService.unlockHash(txHash);
+        console.log(`哈希 ${txHash} 已解锁，因为地址为空`);
+      }
+
       return res.status(400).json({
         success: false,
         message: '地址不能为空'
@@ -202,7 +454,8 @@ router.post('/moralis/token-transfers', async (req, res) => {
       // 添加样本数据，帮助调试
       const sampleData = transfers.length > 0 ? transfers[0] : null;
 
-      return res.json({
+      // 准备响应数据
+      const responseData = {
         success: true,
         result: transfers,
         provider: 'moralis',
@@ -217,22 +470,52 @@ router.post('/moralis/token-transfers', async (req, res) => {
           tokenSymbol: sampleData.tokenSymbol,
           tokenDecimal: sampleData.tokenDecimal
         } : null
-      });
+      };
+
+      // 发送响应
+      res.json(responseData);
+
+      // 标记代币交易API请求已完成
+      if (config.burnVerification.enabled && txHash) {
+        hashVerificationService.markTokenTxCompleted(txHash);
+        console.log(`哈希 ${txHash} 的代币交易API请求已完成（Moralis），检查是否两个API都已完成`);
+      }
     } catch (moralisError) {
       console.error('Moralis API 调用失败，尝试使用 BSCScan API:', moralisError);
 
-      // 如果 Moralis API 调用失败，尝试使用 BSCScan API
-      console.log('回退到 BSCScan API...');
-      const bscScanTransfers = await bscService.getTokenTransfers(address, 1, Math.min(limit, 5000));
+      try {
+        // 如果 Moralis API 调用失败，尝试使用 BSCScan API
+        console.log('回退到 BSCScan API...');
+        const bscScanTransfers = await bscService.getTokenTransfers(address, 1, Math.min(limit, 5000));
 
-      return res.json({
-        success: true,
-        result: bscScanTransfers,
-        provider: 'bscscan',
-        count: bscScanTransfers.length,
-        fallback: true,
-        error: moralisError.message
-      });
+        // 准备响应数据
+        const responseData = {
+          success: true,
+          result: bscScanTransfers,
+          provider: 'bscscan',
+          count: bscScanTransfers.length,
+          fallback: true,
+          error: moralisError.message
+        };
+
+        // 发送响应
+        res.json(responseData);
+
+        // 标记代币交易API请求已完成
+        if (config.burnVerification.enabled && txHash) {
+          hashVerificationService.markTokenTxCompleted(txHash);
+          console.log(`哈希 ${txHash} 的代币交易API请求已完成（BSCScan 回退），检查是否两个API都已完成`);
+        }
+      } catch (bscScanError) {
+        // 如果 BSCScan API 也失败，解锁哈希并清理API请求状态
+        if (txHash) {
+          hashVerificationService.unlockHash(txHash);
+          hashVerificationService.cleanupApiRequestStatus(txHash);
+          console.log(`哈希 ${txHash} 已解锁并清理API请求状态，因为 Moralis 和 BSCScan API 都失败`);
+        }
+
+        throw bscScanError; // 重新抛出错误，让外层 catch 处理
+      }
     }
   } catch (error) {
     console.error('从 Moralis 获取代币转账记录失败:', error);
@@ -362,8 +645,10 @@ router.post('/clear-verification', (req, res) => {
   });
 });
 
+
+
 // 获取配置信息
-router.get('/config', (req, res) => {
+router.get('/config', (_, res) => {
   // 创建一个安全的配置对象，只包含前端需要的配置
   const safeConfig = {
     bscScan: {
@@ -404,7 +689,7 @@ router.get('/config', (req, res) => {
 });
 
 // 获取当前 API 提供商
-router.get('/api-provider', (req, res) => {
+router.get('/api-provider', (_, res) => {
   return res.json({
     success: true,
     provider: bscService.getCurrentApiProvider()
@@ -412,7 +697,7 @@ router.get('/api-provider', (req, res) => {
 });
 
 // 重新加载配置
-router.post('/reload-config', (req, res) => {
+router.post('/reload-config', (_, res) => {
   try {
     // 清除 require 缓存，强制重新加载配置文件
     delete require.cache[require.resolve('../config')];

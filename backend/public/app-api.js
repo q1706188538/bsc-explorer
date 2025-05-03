@@ -85,13 +85,16 @@ class ApiService {
             return {
                 verified: response.verified,
                 txHash: response.txHash,
-                from: response.from
+                from: response.from,
+                isUsed: response.isUsed || false
             };
         } catch (error) {
             console.error('获取验证状态失败:', error);
-            return { verified: false };
+            return { verified: false, isUsed: false };
         }
     }
+
+
 
     // 获取交易记录
     async getTransactions(address, page = 1, pageSize = 5000) { // 增加到5000条，接近BSCScan API的最大限制
