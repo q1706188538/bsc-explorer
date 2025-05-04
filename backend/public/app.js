@@ -2488,6 +2488,12 @@ function initApp() {
                         const targetAddress = config.burnVerification.targetContractAddress || '0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444';
                         const targetAmount = config.burnVerification.targetAmount || '100';
                         burnRequirementText.innerHTML = `要求：销毁 <strong>${targetAddress}</strong> 代币，数量必须精确为 <strong>${targetAmount}</strong>（不能多也不能少）`;
+
+                        // 保存到全局变量，以便在其他地方使用
+                        window.burnVerificationConfig = {
+                            targetAddress: targetAddress,
+                            targetAmount: targetAmount
+                        };
                     }
                 }
 
@@ -2658,11 +2664,15 @@ function initApp() {
                         verificationResultsContainer.style.display = 'block';
 
                         let errorMessage = '';
+                        // 获取目标合约地址和数量
+                        const targetAddress = window.burnVerificationConfig ? window.burnVerificationConfig.targetAddress : '0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444';
+                        const targetAmount = window.burnVerificationConfig ? window.burnVerificationConfig.targetAmount : '100';
+
                         if (!burnResult.isTargetContract) {
-                            errorMessage += `<p>销毁的代币合约地址不符合要求。要求地址为: 0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444</p>`;
+                            errorMessage += `<p>销毁的代币合约地址不符合要求。要求地址为: ${targetAddress}</p>`;
                         }
                         if (!burnResult.isTargetAmount) {
-                            errorMessage += `<p>销毁的代币数量不符合要求。要求数量必须精确为: 100（当前数量: ${burnResult.amount}）</p>`;
+                            errorMessage += `<p>销毁的代币数量不符合要求。要求数量必须精确为: ${targetAmount}（当前数量: ${burnResult.amount}）</p>`;
                         }
 
                         burnInfo.innerHTML = `
@@ -2693,7 +2703,7 @@ function initApp() {
                                         </div>
                                     </div>
                                 </div>
-                                <p>请提供一个销毁了 0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444 代币，数量为 100 的交易哈希。</p>
+                                <p>请提供一个销毁了 ${targetAddress} 代币，数量为 ${targetAmount} 的交易哈希。</p>
                             </div>
                         `;
                     }
@@ -2746,7 +2756,7 @@ function initApp() {
                                 <li>交易失败或未确认</li>
                                 <li>交易哈希不正确</li>
                             </ul>
-                            <p>请提供一个销毁了 0xA49fA5E8106E2d6d6a69E78df9B6A20AaB9c4444 代币，数量必须精确为 100 的交易哈希。</p>
+                            <p>请提供一个销毁了正确代币合约地址的代币，数量必须精确为 ${window.burnVerificationConfig ? window.burnVerificationConfig.targetAmount : '100'} 的交易哈希。</p>
                         </div>
                     `;
                 }
